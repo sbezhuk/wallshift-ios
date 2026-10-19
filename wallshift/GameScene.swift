@@ -142,40 +142,40 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     
     /// Розміри розриву прірв залежно від набраних очок:
     /// - Рівень 0 (0...39): 2...3 тайли (96...144 pt)
-    /// - Рівень 1 (40...79): 2...4 тайли (96...192 pt)
-    /// - Рівень 2 (80...119): 3...5 тайлів (144...240 pt)
-    /// - Рівень 3+ (120+): 3...6 тайлів (144...288 pt)
+    /// - Рівень 1 (40...79): 2...3 тайли (96...144 pt)
+    /// - Рівень 2 (80...119): 2...4 тайли (96...192 pt)
+    /// - Рівень 3+ (120+): 3...4 тайли (144...192 pt)
     private func randomAbyssGapTileCount() -> Int {
         switch difficultyLevel {
         case 0:
             return Int.random(in: 2...3)
         case 1:
-            return Int.random(in: 2...4)
+            return Int.random(in: 2...3)
         case 2:
-            return Int.random(in: 3...5)
+            return Int.random(in: 2...4)
         default:
-            return Int.random(in: 3...6)
+            return Int.random(in: 3...4)
         }
     }
     
-    /// Скорочення дистанції між прірвами (прірви з'являються суттєво частіше):
-    /// - 0...39: 340...460 pt
-    /// - 40...79: 260...360 pt
-    /// - 80...119: 200...290 pt
-    /// - 120...159: 150...230 pt
-    /// - 160+: 120...180 pt
+    /// Скорочення дистанції між прірвами з гарантією вільного простору для спавну мобів:
+    /// - 0...39: 460...580 pt
+    /// - 40...79: 380...480 pt
+    /// - 80...119: 320...400 pt
+    /// - 120...159: 280...350 pt
+    /// - 160+: 240...320 pt
     private func randomAbyssDistance() -> CGFloat {
         switch difficultyLevel {
         case 0:
-            return CGFloat.random(in: 340.0...460.0)
+            return CGFloat.random(in: 460.0...580.0)
         case 1:
-            return CGFloat.random(in: 260.0...360.0)
+            return CGFloat.random(in: 380.0...480.0)
         case 2:
-            return CGFloat.random(in: 200.0...290.0)
+            return CGFloat.random(in: 320.0...400.0)
         case 3:
-            return CGFloat.random(in: 150.0...230.0)
+            return CGFloat.random(in: 280.0...350.0)
         default:
-            return CGFloat.random(in: 120.0...180.0)
+            return CGFloat.random(in: 240.0...320.0)
         }
     }
     
@@ -623,7 +623,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // Також перевіряємо заплановану наступну прірву, якщо вона на цій стіні
         if nextAbyssIsOnLeft == onLeftWall {
             let plannedMinY = nextAbyssY - safetyMargin
-            let plannedMaxY = nextAbyssY + (Config.tileSize * 6.0) + safetyMargin
+            let plannedMaxY = nextAbyssY + (Config.tileSize * 4.0) + safetyMargin
             if yPos >= plannedMinY && yPos <= plannedMaxY {
                 return false
             }
@@ -998,24 +998,26 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func canSpawnMob(onLeftWall: Bool, startY: CGFloat, endY: CGFloat) -> Bool {
         let midY = (startY + endY) / 2.0
         
-        // 1. Стіна для патрулювання має бути повністю суцільною
-        guard isWallSolid(onLeftWall: onLeftWall, atY: startY, safetyMargin: 40.0),
-              isWallSolid(onLeftWall: onLeftWall, atY: endY, safetyMargin: 40.0),
-              isWallSolid(onLeftWall: onLeftWall, atY: midY, safetyMargin: 40.0) else {
+        // 1. Стіна для патрулювання має бути суцільною (комфортний запас 20 pt від уступу прірви)
+        guard isWallSolid(onLeftWall: onLeftWall, atY: startY, safetyMargin: 20.0),
+              isWallSolid(onLeftWall: onLeftWall, atY: endY, safetyMargin: 20.0),
+              isWallSolid(onLeftWall: onLeftWall, atY: midY, safetyMargin: 20.0) else {
             return false
         }
         
-        // 2. Протилежна стіна обов'язково безпечна для гравця (головний фактор playability)
-        guard isWallSolid(onLeftWall: !onLeftWall, atY: startY, safetyMargin: 60.0),
-              isWallSolid(onLeftWall: !onLeftWall, atY: endY, safetyMargin: 60.0),
-              isWallSolid(onLeftWall: !onLeftWall, atY: midY, safetyMargin: 60.0) else {
+        // 2. Протилежна стіна обов'язково безпечна для приземлення гравця (запас 30 pt)
+        guard isWallSolid(onLeftWall: !onLeftWall, atY: startY, safetyMargin: 30.0),
+              isWallSolid(onLeftWall: !onLeftWall, atY: endY, safetyMargin: 30.0),
+              isWallSolid(onLeftWall: !onLeftWall, atY: midY, safetyMargin: 30.0) else {
             return false
         }
         
         // 3. Дистанція до інших мобів (щоб уникнути непрохідних скупчень)
         for mob in trackMobNodes {
-            let mobMin = mob.pointAY - 160.0
-            let mobMax = mob.pointBY + 160.0
+            let sameWall = (mob.isOnLeftWall == onLeftWall)
+            let buffer: CGFloat = sameWall ? 100.0 : 50.0
+            let mobMin = mob.pointAY - buffer
+            let mobMax = mob.pointBY + buffer
             if startY <= mobMax && endY >= mobMin {
                 return false
             }
@@ -1026,21 +1028,32 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     
     /// Спроба процедурного спавну моба на основі поточної висоти каньйону
     private func trySpawnMob(candidateY: CGFloat) {
-        // Довжина маршруту патрулювання від точки А до точки Б (120...200 pt)
-        let patrolDistance = CGFloat.random(in: 120.0...200.0)
+        // Довжина маршруту патрулювання від точки А до точки Б (80...130 pt)
+        let patrolDistance = CGFloat.random(in: 80.0...130.0)
         let patrolSpeed = CGFloat.random(in: 60.0...85.0) + min(35.0, CGFloat(difficultyLevel) * 3.5)
         let endY = candidateY + patrolDistance
         
         // Випадковий вибір стіни для патрулювання
         let preferredLeft = Bool.random()
-        let targetSide: Bool?
+        var targetSide: Bool?
+        var finalEndY = endY
         
         if canSpawnMob(onLeftWall: preferredLeft, startY: candidateY, endY: endY) {
             targetSide = preferredLeft
         } else if canSpawnMob(onLeftWall: !preferredLeft, startY: candidateY, endY: endY) {
             targetSide = !preferredLeft
         } else {
-            targetSide = nil
+            // Якщо повна дистанція не вмістилася між прірвами, перевіряємо компактний патруль (75 pt)
+            let compactEndY = candidateY + 75.0
+            if canSpawnMob(onLeftWall: preferredLeft, startY: candidateY, endY: compactEndY) {
+                targetSide = preferredLeft
+                finalEndY = compactEndY
+            } else if canSpawnMob(onLeftWall: !preferredLeft, startY: candidateY, endY: compactEndY) {
+                targetSide = !preferredLeft
+                finalEndY = compactEndY
+            } else {
+                targetSide = nil
+            }
         }
         
         if let onLeft = targetSide {
@@ -1063,7 +1076,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 isOnLeftWall: onLeft,
                 wallX: wallX,
                 pointAY: candidateY,
-                pointBY: endY,
+                pointBY: finalEndY,
                 patrolSpeed: patrolSpeed
             )
             
@@ -1076,11 +1089,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             addChild(mob)
             trackMobNodes.append(mob)
             
-            // Наступний моб планується з інтервалом, скоректованим складності
-            nextMobY = candidateY + randomMobDistance()
+            // Наступний моб планується з інтервалом складності, гарантовано не відстаючи від поточної генерації
+            nextMobY = max(candidateY, currentLeftY) + randomMobDistance()
         } else {
-            // Якщо зараз обидві стіни зайняті прірвами, відкладаємо перевірку на 80 pt вище
-            nextMobY = candidateY + 80.0
+            // Якщо зараз на обох стінах у цій точці прірва, пробуємо трохи вище без відставання від стін
+            nextMobY = max(candidateY + 80.0, currentLeftY + 40.0)
         }
     }
     
@@ -1192,7 +1205,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         
         trackMobNodes.removeAll { mob in
-            if mob.position.y < screenBottom {
+            if mob.pointBY < screenBottom || mob.position.y < screenBottom || mob.parent == nil {
                 mob.removeFromParent()
                 return true
             }
