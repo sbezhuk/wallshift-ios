@@ -1,0 +1,217 @@
+//
+//  PlayerNode.swift
+//  wallshift
+//
+//  Created by Stepan Bezhuk on 19.10.2026.
+//
+
+import SpriteKit
+
+// MARK: - Player State
+enum PlayerState {
+    case running
+    case jumping
+    case dead
+}
+
+// MARK: - PlayerNode
+/// Окремий вузол для головного героя з інкапсуляцією анімацій, текстур та фізики бігу по стіні
+final class PlayerNode: SKSpriteNode {
+    
+    // MARK: - Constants
+    enum Constants {
+        static let visualSize = CGSize(width: 84.0, height: 84.0)
+        
+        // Відстань від центру ноди до підошви ніг персонажа (84 * 1/3 = 28.0)
+        static let footOffset: CGFloat = 28.0
+        
+        // Хітбокс для зіткнень з перешкодами
+        static let hitboxSize = CGSize(width: 38.0, height: 50.0)
+        static let timePerFrame: TimeInterval = 0.05
+        
+        // Параметри анімації: легко змінити кількість кадрів або префікс
+        static let runningFrameCount: Int = 12
+        static let runningFramePrefix: String = "run_"
+    }
+    
+    // MARK: - Properties
+    private(set) var currentState: PlayerState = .running
+    
+    /// Стан положення героя: true - ліва стіна, false - права стіна
+    private(set) var isOnLeftWall: Bool = true
+    
+    var isJumping: Bool {
+        return currentState == .jumping
+    }
+    
+    var isDead: Bool {
+        return currentState == .dead
+    }
+    
+    // Кешовані текстури анімації бігу (завантажуються з Assets/Sprites/Player/Running/run_X)
+    private static let runningTextures: [SKTexture] = {
+        var textures: [SKTexture] = []
+        for i in 0..<Constants.runningFrameCount {
+            let frameName = "\(Constants.runningFramePrefix)\(i)"
+            let texture = SKTexture(imageNamed: frameName)
+            texture.filteringMode = .linear
+            textures.append(texture)
+        }
+        return textures
+    }()
+    
+    // MARK: - Initialization
+    init() {
+        let defaultTexture = PlayerNode.runningTextures.first ?? SKTexture()
+        super.init(texture: defaultTexture, color: .clear, size: Constants.visualSize)
+        
+        name = "PlayerNode"
+        zPosition = 5
+        setupPhysicsBody()
+        updateOrientation(forLeftWall: true)
+        startRunningAnimation()
+    }
+    
+    required init?(coder aDecoder: NSCoder) {
+        super.init(coder: aDecoder)
+        name = "PlayerNode"
+        zPosition = 5
+        setupPhysicsBody()
+        updateOrientation(forLeftWall: true)
+        startRunningAnimation()
+    }
+    
+    // MARK: - Physics Setup
+    private func setupPhysicsBody() {
+        let body = SKPhysicsBody(rectangleOf: Constants.hitboxSize)
+        body.isDynamic = true
+        body.affectedByGravity = false
+        body.allowsRotation = false
+        body.categoryBitMask = PhysicsCategory.player
+        body.collisionBitMask = PhysicsCategory.none
+        body.contactTestBitMask = PhysicsCategory.obstacle | PhysicsCategory.abyss
+        self.physicsBody = body
+    }
+    
+    // MARK: - Wall Running Orientation
+    /// Орієнтація спрайта для бігу по вертикальній стіні:
+    /// - Ліва стіна: ноги впираються в ліву стіну (-90°), напрямок бігу вгору.
+    /// - Права стіна: ноги впираються в праву стіну (+90°), напрямок бігу вгору.
+    func updateOrientation(forLeftWall isLeft: Bool) {
+        isOnLeftWall = isLeft
+        if isLeft {
+            xScale = -1.0
+            yScale = 1.0
+            zRotation = -.pi / 2.0
+        } else {
+            xScale = 1.0
+            yScale = 1.0
+            zRotation = .pi / 2.0
+        }
+    }
+    
+    // MARK: - Animations
+    
+    /// Запуск циклічної анімації бігу по стіні
+    func startRunningAnimation() {
+        guard !PlayerNode.runningTextures.isEmpty else { return }
+        
+        currentState = .running
+        let runAction = SKAction.repeatForever(
+            SKAction.animate(with: PlayerNode.runningTextures, timePerFrame: Constants.timePerFrame, resize: false, restore: true)
+        )
+        run(runAction, withKey: "runAnimation")
+    }
+    
+    /// Стрибок на протилежну стіну з переворотом у повітрі
+    func jump(to targetX: CGFloat, duration: TimeInterval, completion: @escaping () -> Void) {
+        guard currentState != .dead else { return }
+        currentState = .jumping
+        
+        // 1. Горизонтальний рух із плавним easing
+        let moveX = SKAction.moveTo(x: targetX, duration: duration)
+        moveX.timingMode = .easeInEaseOut
+        
+        // 2. Акробатичний переворот у повітрі:
+        // Герой відштовхується ногами від поточної стіни, розвертається в польоті
+        // та готує ноги для приземлення на протилежну стіну
+        let nextIsOnLeftWall = !isOnLeftWall
+        let targetRotation: CGFloat = nextIsOnLeftWall ? -.pi / 2.0 : .pi / 2.0
+        let halfDuration = duration * 0.5
+        
+        let midAirFlip = SKAction.sequence([
+            SKAction.rotate(toAngle: 0.0, duration: halfDuration),
+            SKAction.run { [weak self] in
+                guard let self = self else { return }
+                self.xScale = nextIsOnLeftWall ? -1.0 : 1.0
+            },
+            SKAction.rotate(toAngle: targetRotation, duration: halfDuration)
+        ])
+        midAirFlip.timingMode = .easeInEaseOut
+        
+        let flightGroup = SKAction.group([moveX, midAirFlip])
+        
+        // 3. Приземлення на протилежну стіну
+        let landAction = SKAction.run { [weak self] in
+            guard let self = self, self.currentState != .dead else { return }
+            
+            self.isOnLeftWall = nextIsOnLeftWall
+            self.position.x = targetX
+            self.updateOrientation(forLeftWall: self.isOnLeftWall)
+            self.currentState = .running
+            
+            // Амортизація ногами (squash & stretch) при ударі об стіну
+            let landingCushion = SKAction.sequence([
+                SKAction.scaleY(to: 0.78, duration: 0.04),
+                SKAction.scaleY(to: 1.0, duration: 0.08)
+            ])
+            self.run(landingCushion)
+            
+            completion()
+        }
+        
+        let fullJumpSequence = SKAction.sequence([flightGroup, landAction])
+        run(fullJumpSequence, withKey: "jumpAction")
+    }
+    
+    /// Падіння героя безпосередньо всередину прірви (у точку розриву між уступами скелі)
+    func fallIntoAbyss(targetPoint: CGPoint, completion: @escaping () -> Void) {
+        guard currentState != .dead else { return }
+        currentState = .dead
+        
+        removeAction(forKey: "jumpAction")
+        removeAction(forKey: "runAnimation")
+        
+        // Знижуємо zPosition до 2 (нижче ніж тайли скелі zPosition = 3, але вище за темний фон ями zPosition = 1)
+        self.zPosition = 2
+        
+        // Політ безпосередньо в отвір прірви (туди, куди вказує розрив між уступами)
+        let moveToHole = SKAction.move(to: targetPoint, duration: 0.45)
+        moveToHole.timingMode = .easeIn
+        
+        // Обертання/перекидання під час затягування у прірву
+        let spinAngle: CGFloat = isOnLeftWall ? -.pi * 2.5 : .pi * 2.5
+        let rotateAction = SKAction.rotate(byAngle: spinAngle, duration: 0.45)
+        rotateAction.timingMode = .easeIn
+        
+        // Перспективне зменшення (занурення у глибину чорної ями)
+        let targetXScale: CGFloat = isOnLeftWall ? -0.05 : 0.05
+        let scaleX = SKAction.scaleX(to: targetXScale, duration: 0.45)
+        let scaleY = SKAction.scaleY(to: 0.05, duration: 0.45)
+        scaleX.timingMode = .easeIn
+        scaleY.timingMode = .easeIn
+        let scaleDown = SKAction.group([scaleX, scaleY])
+        
+        // Занурення та розчинення на тлі осіннього лісу
+        let darken = SKAction.colorize(with: SKColor(red: 0.18, green: 0.12, blue: 0.09, alpha: 1.0), colorBlendFactor: 0.95, duration: 0.35)
+        let fadeOut = SKAction.sequence([
+            SKAction.wait(forDuration: 0.15),
+            SKAction.fadeOut(withDuration: 0.30)
+        ])
+        
+        let fallGroup = SKAction.group([moveToHole, rotateAction, scaleDown, darken, fadeOut])
+        run(fallGroup) {
+            completion()
+        }
+    }
+}
