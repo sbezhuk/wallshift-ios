@@ -206,6 +206,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private let maxConsecutiveAbyssesOnSameWall: Int = 2
     private var nextHeartY: CGFloat = 0
     private var nextCoinPatternY: CGFloat = 0
+    private var lastAbyssHitTime: TimeInterval = 0
     
     // Процедурний спавн ворожих мобів (перший моб з'являється на відмітці 500-1000 очків)
     private var firstMobScoreThreshold: Int = 0
@@ -545,6 +546,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         nextAbyssIsOnLeft = Bool.random()
         consecutiveAbyssesOnSameWall = 1
         nextAbyssY = player.position.y + 500.0
+        lastAbyssHitTime = 0
         
         // Серця тепер є рідкістю: перше з'явиться приблизно після 90-100 очок (~2200 pt)
         trackHeartNodes.removeAll()
@@ -1293,11 +1295,36 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                     currentTime: currentTime
                 )
             }
+            
+            // Якщо герой біжить по стіні (не в стрибку) — перевіряємо наявність опори під ногами.
+            // Навіть за наявності 3-секундного щита герой НЕ МОЖЕ бігти по повітрю над прірвою або стояти в розриві!
+            if !player.isJumping {
+                if let abyss = checkAbyssUnderPlayer() {
+                    handleAbyssHit(abyss: abyss)
+                }
+            }
         }
         
         // Безперервне поповнення доріжки наперед та очищення старих тайлів позаду
         buildTrack(upTo: cameraNode.position.y + (size.height * 1.5))
         cleanupPassedTrack()
+    }
+    
+    /// Перевіряє, чи знаходиться гравець безпосередньо над прірвою (в розриві стіни)
+    private func checkAbyssUnderPlayer() -> AbyssObstacleNode? {
+        let trackNodes = player.isOnLeftWall ? leftTrackNodes : rightTrackNodes
+        let playerY = player.position.y
+        for node in trackNodes {
+            if let abyss = node as? AbyssObstacleNode {
+                let halfH = abyss.gapHeight / 2.0
+                let minY = abyss.position.y - halfH + 4.0
+                let maxY = abyss.position.y + halfH - 4.0
+                if playerY >= minY && playerY <= maxY {
+                    return abyss
+                }
+            }
+        }
+        return nil
     }
     
     override func didEvaluateActions() {
@@ -1321,9 +1348,6 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // 1. Потрапляння у прірву
         if mask == (PhysicsCategory.player | PhysicsCategory.abyss) {
-            // Якщо гравець зараз моргає (невразливий 3 секунди), прірва не завдає шкоди
-            guard !player.isInvulnerable else { return }
-            
             let abyssNode = (contact.bodyA.categoryBitMask == PhysicsCategory.abyss ? contact.bodyA.node : contact.bodyB.node) as? AbyssObstacleNode
             handleAbyssHit(abyss: abyssNode)
         }
@@ -1356,9 +1380,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     
     // MARK: - Lives & Abyss Interaction
     
-    /// Обробка потрапляння персонажа у прірву: втрата 1 життя або Game Over
+    /// Обробка потрапляння персонажа у прірву: втрата 1 життя або Game Over.
+    /// Прірва спрацьовує ЗАВЖДИ (навіть якщо у героя активний щит після удару моба,
+    /// оскільки бігти чи приземлятися в повітря над прірвою неможливо).
     private func handleAbyssHit(abyss: AbyssObstacleNode?) {
-        guard !player.isInvulnerable, !isGameOver, !isPlayerFalling else { return }
+        guard !isGameOver, !isPlayerFalling else { return }
+        
+        let now = CACurrentMediaTime()
+        guard now - lastAbyssHitTime > 0.45 else { return }
+        lastAbyssHitTime = now
         
         currentLives -= 1
         updateHUD()
