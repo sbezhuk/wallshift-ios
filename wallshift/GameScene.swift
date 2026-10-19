@@ -29,8 +29,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         static let tileSize: CGFloat = 48.0
         
         // Швидкість постійного руху вгору (точок за секунду)
-        static let baseUpwardSpeed: CGFloat = 280.0
-        static let maxUpwardSpeed: CGFloat = 430.0
+        static let baseUpwardSpeed: CGFloat = 290.0
+        static let maxUpwardSpeed: CGFloat = 580.0
         
         // Кількість точок вертикального підйому на 1 очко
         static let distancePerScorePoint: CGFloat = 25.0
@@ -129,22 +129,22 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var coinsLabel = SKLabelNode()
     private var hudCoinIcon: SKSpriteNode?
     
-    /// Рівень складності, що зростає кожні 100 очок (0, 1, 2, 3...)
+    /// Рівень складності, що динамічно зростає кожні 40 очок (0, 1, 2, 3...)
     private var difficultyLevel: Int {
-        return score / 100
+        return score / 40
     }
     
-    /// Поточна швидкість підйому камери, що плавно зростає кожні 100 очок
+    /// Поточна швидкість підйому камери: постійно та безперервно зростає разом із набором очок
     private var currentUpwardSpeed: CGFloat {
-        let speedIncrease = CGFloat(difficultyLevel) * 20.0
-        return min(Config.maxUpwardSpeed, Config.baseUpwardSpeed + speedIncrease)
+        let continuousIncrease = CGFloat(score) * 0.40
+        return min(Config.maxUpwardSpeed, Config.baseUpwardSpeed + continuousIncrease)
     }
     
-    /// Різні розміри розриву прірв залежно від набраних очок:
-    /// - 0...99: 2...3 тайли (96...144 pt)
-    /// - 100...199: 2...4 тайли (96...192 pt)
-    /// - 200...299: 2...5 тайлів (96...240 pt)
-    /// - 300+: 3...6 тайлів (144...288 pt)
+    /// Розміри розриву прірв залежно від набраних очок:
+    /// - Рівень 0 (0...39): 2...3 тайли (96...144 pt)
+    /// - Рівень 1 (40...79): 2...4 тайли (96...192 pt)
+    /// - Рівень 2 (80...119): 3...5 тайлів (144...240 pt)
+    /// - Рівень 3+ (120+): 3...6 тайлів (144...288 pt)
     private func randomAbyssGapTileCount() -> Int {
         switch difficultyLevel {
         case 0:
@@ -152,39 +152,40 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         case 1:
             return Int.random(in: 2...4)
         case 2:
-            return Int.random(in: 2...5)
+            return Int.random(in: 3...5)
         default:
             return Int.random(in: 3...6)
         }
     }
     
-    /// Скорочення дистанції між прірвами кожні 100 очок (більше прірв з часом):
-    /// - 0...99: 520...720 pt
-    /// - 100...199: 400...560 pt
-    /// - 200...299: 320...460 pt
-    /// - 300...399: 260...380 pt
-    /// - 400+: 220...320 pt
+    /// Скорочення дистанції між прірвами (прірви з'являються суттєво частіше):
+    /// - 0...39: 340...460 pt
+    /// - 40...79: 260...360 pt
+    /// - 80...119: 200...290 pt
+    /// - 120...159: 150...230 pt
+    /// - 160+: 120...180 pt
     private func randomAbyssDistance() -> CGFloat {
         switch difficultyLevel {
         case 0:
-            return CGFloat.random(in: 520.0...720.0)
+            return CGFloat.random(in: 340.0...460.0)
         case 1:
-            return CGFloat.random(in: 400.0...560.0)
+            return CGFloat.random(in: 260.0...360.0)
         case 2:
-            return CGFloat.random(in: 320.0...460.0)
+            return CGFloat.random(in: 200.0...290.0)
         case 3:
-            return CGFloat.random(in: 260.0...380.0)
+            return CGFloat.random(in: 150.0...230.0)
         default:
-            return CGFloat.random(in: 220.0...320.0)
+            return CGFloat.random(in: 120.0...180.0)
         }
     }
     
-    /// Рідкісний інтервал появи сердець (додаткових життів):
-    /// Перше серце з'являється не раніше 2200 pt (~90 очок),
-    /// а наступні — кожні 3500...5500 pt (~140...220 очок)
+    /// Значне скорочення появи сердець (додаткових життів):
+    /// Перше серце з'являється не раніше ~280 очок (~7000 pt),
+    /// а наступні — кожні 9000...14000 pt (~360...560 очок).
+    /// При повному здоров'ї (3 життя) додається ще +7000 pt затримки.
     private func randomHeartDistance() -> CGFloat {
-        let extraDelay: CGFloat = currentLives >= GameScene.maxLives ? 2000.0 : 0.0
-        return CGFloat.random(in: 3500.0...5500.0) + extraDelay
+        let extraDelay: CGFloat = currentLives >= GameScene.maxLives ? 7000.0 : 0.0
+        return CGFloat.random(in: 9000.0...14000.0) + extraDelay
     }
     
     // Відстеження часу для обчислення deltaTime
@@ -545,18 +546,18 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // Перша прірва з'явиться вище гравця на випадковій стіні
         nextAbyssIsOnLeft = Bool.random()
         consecutiveAbyssesOnSameWall = 1
-        nextAbyssY = player.position.y + 500.0
+        nextAbyssY = player.position.y + 320.0
         lastAbyssHitTime = 0
         
-        // Серця тепер є рідкістю: перше з'явиться приблизно після 90-100 очок (~2200 pt)
+        // Серця тепер суттєво скорочені: перше з'явиться не раніше 280 очок (~7000 pt)
         trackHeartNodes.removeAll()
-        nextHeartY = player.position.y + 2200.0
+        nextHeartY = player.position.y + 7000.0
         
-        // Ворожі моби: перший моб з'являється на рандомній відмітці 500-1000 очок (в кожному раунді різний інтервал)
+        // Ворожі моби: перший моб з'являється значно раніше (на 60-120 очках)
         trackMobNodes.removeAll()
         activeFireArrows.forEach { $0.removeFromParent() }
         activeFireArrows.removeAll()
-        firstMobScoreThreshold = Int.random(in: 500...1000)
+        firstMobScoreThreshold = Int.random(in: 60...120)
         nextMobY = startCameraY + (CGFloat(firstMobScoreThreshold) * Config.distancePerScorePoint)
         
         // Золотисті монети: перша група монет з'являється вже на початку підйому (~250 pt)
@@ -971,21 +972,21 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     /// Інтервал між спавнами ворожих мобів, що скорочується з ускладненням гри:
-    /// Чим більше очок / вищий рівень складності — тим частіше з'являються патрулюючі моби.
+    /// Чим більше очок / вищий рівень складності — тим частіше з'являються патрулюючі та стріляючі моби.
     private func randomMobDistance() -> CGFloat {
         switch difficultyLevel {
-        case 0...9:
-            // 500...999 очок: плавне введення перших мобів (~45...65 очок між мобами)
-            return CGFloat.random(in: 1100.0...1600.0)
-        case 10...14:
-            // 1000...1499 очок (~32...48 очок між мобами)
-            return CGFloat.random(in: 800.0...1200.0)
-        case 15...19:
-            // 1500...1999 очок (~22...34 очки між мобами)
-            return CGFloat.random(in: 550.0...850.0)
+        case 0...1:
+            // 0...79 очок: плавне введення перших мобів (~30...42 очки між мобами)
+            return CGFloat.random(in: 750.0...1050.0)
+        case 2...4:
+            // 80...199 очок (~19...30 очок між мобами)
+            return CGFloat.random(in: 480.0...750.0)
+        case 5...8:
+            // 200...359 очок (~13...20 очок між мобами)
+            return CGFloat.random(in: 320.0...500.0)
         default:
-            // 2000+ очок: інтенсивний спавн (~16...26 очок між мобами)
-            return CGFloat.random(in: 400.0...650.0)
+            // 360+ очок: інтенсивний динамічний спавн (~8...14 очок між мобами)
+            return CGFloat.random(in: 200.0...340.0)
         }
     }
     
@@ -1027,7 +1028,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func trySpawnMob(candidateY: CGFloat) {
         // Довжина маршруту патрулювання від точки А до точки Б (120...200 pt)
         let patrolDistance = CGFloat.random(in: 120.0...200.0)
-        let patrolSpeed = CGFloat.random(in: 55.0...80.0)
+        let patrolSpeed = CGFloat.random(in: 60.0...85.0) + min(35.0, CGFloat(difficultyLevel) * 3.5)
         let endY = candidateY + patrolDistance
         
         // Випадковий вибір стіни для патрулювання
@@ -1048,9 +1049,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             // Вибір типу моба: звичайний патрульний або моб-стрілець з вогняними стрілами
             let shooterChance: Double
             switch difficultyLevel {
-            case 0...9:
+            case 0...2:
                 shooterChance = 0.35 // Початкові рівні: 35% стрільців
-            case 10...14:
+            case 3...5:
                 shooterChance = 0.50
             default:
                 shooterChance = 0.65 // Високі рівні: 65% стрільців
@@ -1078,8 +1079,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             // Наступний моб планується з інтервалом, скоректованим складності
             nextMobY = candidateY + randomMobDistance()
         } else {
-            // Якщо зараз обидві стіни зайняті прірвами, відкладаємо перевірку на 120 pt вище
-            nextMobY = candidateY + 120.0
+            // Якщо зараз обидві стіни зайняті прірвами, відкладаємо перевірку на 80 pt вище
+            nextMobY = candidateY + 80.0
         }
     }
     
