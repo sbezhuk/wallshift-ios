@@ -7,6 +7,7 @@
 
 import SpriteKit
 import AVFoundation
+import UIKit
 
 // MARK: - Physics Categories
 /// Бітові маски категорій фізики для визначення взаємодії об'єктів
@@ -55,6 +56,20 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private let wallTexture = SKTexture(imageNamed: "wall_tile")            // Ground 02 - основна доріжка
     private let cliffLowerTexture = SKTexture(imageNamed: "abyss_cliff_right") // Ground 04 - нижній уступ прірви (де стіна закінчується)
     private let cliffUpperTexture = SKTexture(imageNamed: "abyss_cliff_left")  // Ground 08 - верхній уступ прірви (де стіна починається знову)
+    
+    // MARK: - Particle Textures
+    private static let sparkTexture: SKTexture = {
+        let dim: CGFloat = 24.0
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: dim, height: dim))
+        let image = renderer.image { ctx in
+            let rect = CGRect(x: 2, y: 2, width: dim - 4, height: dim - 4)
+            UIColor.white.setFill()
+            UIBezierPath(ovalIn: rect).fill()
+        }
+        return SKTexture(image: image)
+    }()
+    private static let starParticleTexture = SKTexture(imageNamed: "gui_icon_star")
+    private static let heartParticleTexture = SKTexture(imageNamed: "life_hearth")
     
     // MARK: - Decoration Textures (Autumn Forest Environment)
     private let treeTextures: [SKTexture] = [
@@ -1846,19 +1861,64 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
-    /// Спливаючий текст та ефект при підборі серця
+    /// Акуратна система мікро-частинок при підборі серця (розміщується за персонажем, без перекриття і без тексту)
     private func playHeartPickupEffect(at position: CGPoint) {
-        let label = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-        label.text = "+1 LIFE"
-        label.fontSize = 17
-        label.fontColor = SKColor(red: 0.45, green: 0.98, blue: 0.55, alpha: 1.0)
-        label.position = position
-        label.zPosition = 50
-        addChild(label)
+        let container = SKNode()
+        container.position = position
+        container.zPosition = 4.8 // Позаду персонажа (zPosition = 5.0), щоб не закривати огляд
         
-        let moveUp = SKAction.moveBy(x: 0, y: 36.0, duration: 0.6)
-        let fadeOut = SKAction.fadeOut(withDuration: 0.6)
-        label.run(SKAction.sequence([SKAction.group([moveUp, fadeOut]), SKAction.removeFromParent()]))
+        // 1. Акуратні міні-сердечка (~10 пт), що м'яко здіймаються вгору
+        let heartEmitter = SKEmitterNode()
+        heartEmitter.particleTexture = GameScene.heartParticleTexture
+        heartEmitter.particleBirthRate = 200
+        heartEmitter.numParticlesToEmit = 7
+        heartEmitter.particleLifetime = 0.38
+        heartEmitter.particleLifetimeRange = 0.10
+        heartEmitter.particleSpeed = 65.0
+        heartEmitter.particleSpeedRange = 25.0
+        heartEmitter.emissionAngle = .pi / 2.0 // Вгору
+        heartEmitter.emissionAngleRange = .pi * 0.65
+        heartEmitter.yAcceleration = 25.0
+        heartEmitter.particleAlpha = 0.95
+        heartEmitter.particleAlphaSpeed = -2.2
+        heartEmitter.particleScale = 0.08
+        heartEmitter.particleScaleRange = 0.025
+        heartEmitter.particleScaleSpeed = -0.12
+        heartEmitter.particleRotation = 0
+        heartEmitter.particleRotationSpeed = .pi * 1.2
+        heartEmitter.particleRotationRange = .pi
+        heartEmitter.particleBlendMode = .alpha
+        container.addChild(heartEmitter)
+        
+        // 2. Дрібні смарагдові іскри відновлення здоров'я
+        let healEmitter = SKEmitterNode()
+        healEmitter.particleTexture = GameScene.sparkTexture
+        healEmitter.particleBirthRate = 250
+        healEmitter.numParticlesToEmit = 10
+        healEmitter.particleLifetime = 0.35
+        healEmitter.particleLifetimeRange = 0.08
+        healEmitter.particleSpeed = 70.0
+        healEmitter.particleSpeedRange = 25.0
+        healEmitter.emissionAngle = .pi / 2.0
+        healEmitter.emissionAngleRange = .pi * 0.85
+        healEmitter.yAcceleration = 30.0
+        healEmitter.particleAlpha = 0.9
+        healEmitter.particleAlphaSpeed = -2.4
+        healEmitter.particleScale = 0.16
+        healEmitter.particleScaleRange = 0.05
+        healEmitter.particleScaleSpeed = -0.25
+        healEmitter.particleColor = SKColor(red: 0.35, green: 0.98, blue: 0.55, alpha: 1.0)
+        healEmitter.particleColorBlendFactor = 1.0
+        healEmitter.particleBlendMode = .add
+        container.addChild(healEmitter)
+        
+        addChild(container)
+        
+        // Автоматичне видалення контейнера після завершення життя частинок
+        container.run(SKAction.sequence([
+            SKAction.wait(forDuration: 0.50),
+            SKAction.removeFromParent()
+        ]))
     }
     
     // MARK: - Lives & Mob Interaction
@@ -1941,19 +2001,62 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         playCoinPickupEffect(at: coin.position)
     }
     
-    /// Спливаючий текст +1 золотистого кольору
+    /// Акуратна система мікро-частинок при підборі монети (розміщується за персонажем, без перекриття і без тексту)
     private func playCoinPickupEffect(at position: CGPoint) {
-        let label = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-        label.text = "+1"
-        label.fontSize = 15
-        label.fontColor = SKColor(red: 1.0, green: 0.88, blue: 0.30, alpha: 1.0)
-        label.position = position
-        label.zPosition = 50
-        addChild(label)
+        let container = SKNode()
+        container.position = position
+        container.zPosition = 4.8 // Позаду персонажа (zPosition = 5.0), щоб не закривати огляд
         
-        let moveUp = SKAction.moveBy(x: 0, y: 26.0, duration: 0.45)
-        let fadeOut = SKAction.fadeOut(withDuration: 0.45)
-        label.run(SKAction.sequence([SKAction.group([moveUp, fadeOut]), SKAction.removeFromParent()]))
+        // 1. Акуратний радіальний спалах міні-зірочок (~9-10 пт)
+        let starEmitter = SKEmitterNode()
+        starEmitter.particleTexture = GameScene.starParticleTexture
+        starEmitter.particleBirthRate = 200
+        starEmitter.numParticlesToEmit = 8
+        starEmitter.particleLifetime = 0.28
+        starEmitter.particleLifetimeRange = 0.08
+        starEmitter.particleSpeed = 65.0
+        starEmitter.particleSpeedRange = 25.0
+        starEmitter.emissionAngle = 0
+        starEmitter.emissionAngleRange = .pi * 2.0 // Повне коло 360°
+        starEmitter.particleAlpha = 0.95
+        starEmitter.particleAlphaSpeed = -2.6
+        starEmitter.particleScale = 0.055
+        starEmitter.particleScaleRange = 0.02
+        starEmitter.particleScaleSpeed = -0.09
+        starEmitter.particleRotation = 0
+        starEmitter.particleRotationSpeed = .pi * 3.0
+        starEmitter.particleRotationRange = .pi * 2.0
+        starEmitter.particleBlendMode = .alpha
+        container.addChild(starEmitter)
+        
+        // 2. Дрібні золотисто-жовті іскри (~3-4 пт)
+        let sparkEmitter = SKEmitterNode()
+        sparkEmitter.particleTexture = GameScene.sparkTexture
+        sparkEmitter.particleBirthRate = 250
+        sparkEmitter.numParticlesToEmit = 10
+        sparkEmitter.particleLifetime = 0.25
+        sparkEmitter.particleLifetimeRange = 0.06
+        sparkEmitter.particleSpeed = 75.0
+        sparkEmitter.particleSpeedRange = 25.0
+        sparkEmitter.emissionAngle = 0
+        sparkEmitter.emissionAngleRange = .pi * 2.0
+        sparkEmitter.particleAlpha = 0.95
+        sparkEmitter.particleAlphaSpeed = -3.0
+        sparkEmitter.particleScale = 0.16
+        sparkEmitter.particleScaleRange = 0.05
+        sparkEmitter.particleScaleSpeed = -0.25
+        sparkEmitter.particleColor = SKColor(red: 1.0, green: 0.88, blue: 0.30, alpha: 1.0)
+        sparkEmitter.particleColorBlendFactor = 1.0
+        sparkEmitter.particleBlendMode = .add
+        container.addChild(sparkEmitter)
+        
+        addChild(container)
+        
+        // Автоматичне видалення контейнера після завершення життя частинок
+        container.run(SKAction.sequence([
+            SKAction.wait(forDuration: 0.45),
+            SKAction.removeFromParent()
+        ]))
     }
     
     // MARK: - Game Over & Abyss Fall
