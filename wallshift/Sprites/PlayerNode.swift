@@ -40,6 +40,9 @@ final class PlayerNode: SKSpriteNode {
     /// Стан положення героя: true - ліва стіна, false - права стіна
     private(set) var isOnLeftWall: Bool = true
     
+    /// Стан невразливості героя (під час якого він моргає та ігнорує пошкодження від прірви)
+    private(set) var isInvulnerable: Bool = false
+    
     var isJumping: Bool {
         return currentState == .jumping
     }
@@ -89,7 +92,7 @@ final class PlayerNode: SKSpriteNode {
         body.allowsRotation = false
         body.categoryBitMask = PhysicsCategory.player
         body.collisionBitMask = PhysicsCategory.none
-        body.contactTestBitMask = PhysicsCategory.obstacle | PhysicsCategory.abyss
+        body.contactTestBitMask = PhysicsCategory.obstacle | PhysicsCategory.abyss | PhysicsCategory.heart
         self.physicsBody = body
     }
     
@@ -213,5 +216,56 @@ final class PlayerNode: SKSpriteNode {
         run(fallGroup) {
             completion()
         }
+    }
+    
+    // MARK: - Invulnerability & Respawn
+    
+    /// Запуск 3 секунд невразливості з ефектом моргання
+    func startInvulnerability(duration: TimeInterval = 3.0) {
+        isInvulnerable = true
+        removeAction(forKey: "invulnerabilityAction")
+        
+        let blinkInterval: TimeInterval = 0.12
+        let blinkCount = Int(duration / (blinkInterval * 2.0))
+        
+        let blinkStep = SKAction.sequence([
+            SKAction.fadeAlpha(to: 0.25, duration: blinkInterval),
+            SKAction.fadeAlpha(to: 1.0, duration: blinkInterval)
+        ])
+        
+        let blinkSequence = SKAction.repeat(blinkStep, count: blinkCount)
+        let finish = SKAction.run { [weak self] in
+            self?.alpha = 1.0
+            self?.isInvulnerable = false
+        }
+        
+        run(SKAction.sequence([blinkSequence, finish]), withKey: "invulnerabilityAction")
+    }
+    
+    /// Скидання стану невразливості
+    func cancelInvulnerability() {
+        removeAction(forKey: "invulnerabilityAction")
+        alpha = 1.0
+        isInvulnerable = false
+    }
+    
+    /// Відновлення персонажа поза прірвою на безпечній стіні з 3-секундною невразливістю
+    func respawn(onLeftWall isLeft: Bool, at newPosition: CGPoint) {
+        removeAction(forKey: "jumpAction")
+        removeAction(forKey: "runAnimation")
+        removeAllActions()
+        
+        currentState = .running
+        physicsBody?.velocity = .zero
+        physicsBody?.angularVelocity = 0
+        
+        self.position = newPosition
+        self.zPosition = 5
+        self.colorBlendFactor = 0.0
+        self.alpha = 1.0
+        
+        updateOrientation(forLeftWall: isLeft)
+        startRunningAnimation()
+        startInvulnerability(duration: 3.0)
     }
 }
