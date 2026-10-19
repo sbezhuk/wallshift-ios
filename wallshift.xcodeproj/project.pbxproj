@@ -1,0 +1,567 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 110;
+	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		3138410230862D8B002B800B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 313840E030862D8A002B800B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 313840E730862D8A002B800B;
+			remoteInfo = wallshift;
+		};
+		3138410C30862D8B002B800B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 313840E030862D8A002B800B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 313840E730862D8A002B800B;
+			remoteInfo = wallshift;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		313840E830862D8A002B800B /* wallshift.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = wallshift.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3138410130862D8B002B800B /* wallshiftTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = wallshiftTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		3138410B30862D8B002B800B /* wallshiftUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = wallshiftUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		3138411130862D8B002B800B /* Exceptions for "wallshift" folder in "wallshift" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 313840E730862D8A002B800B /* wallshift */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		313840EA30862D8A002B800B /* wallshift */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				3138411130862D8B002B800B /* Exceptions for "wallshift" folder in "wallshift" target */,
+			);
+			path = wallshift;
+			sourceTree = "<group>";
+		};
+		3138410430862D8B002B800B /* wallshiftTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = wallshiftTests;
+			sourceTree = "<group>";
+		};
+		3138410E30862D8B002B800B /* wallshiftUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = wallshiftUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		313840E530862D8A002B800B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		313840FE30862D8B002B800B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		3138410830862D8B002B800B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		313840DF30862D8A002B800B = {
+			isa = PBXGroup;
+			children = (
+				313840EA30862D8A002B800B /* wallshift */,
+				3138410430862D8B002B800B /* wallshiftTests */,
+				3138410E30862D8B002B800B /* wallshiftUITests */,
+				313840E930862D8A002B800B /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		313840E930862D8A002B800B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				313840E830862D8A002B800B /* wallshift.app */,
+				3138410130862D8B002B800B /* wallshiftTests.xctest */,
+				3138410B30862D8B002B800B /* wallshiftUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		313840E730862D8A002B800B /* wallshift */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3138411230862D8B002B800B /* Build configuration list for PBXNativeTarget "wallshift" */;
+			buildPhases = (
+				313840E430862D8A002B800B /* Sources */,
+				313840E530862D8A002B800B /* Frameworks */,
+				313840E630862D8A002B800B /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				313840EA30862D8A002B800B /* wallshift */,
+			);
+			name = wallshift;
+			productName = wallshift;
+			productReference = 313840E830862D8A002B800B /* wallshift.app */;
+			productType = "com.apple.product-type.application";
+		};
+		3138410030862D8B002B800B /* wallshiftTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3138411730862D8B002B800B /* Build configuration list for PBXNativeTarget "wallshiftTests" */;
+			buildPhases = (
+				313840FD30862D8B002B800B /* Sources */,
+				313840FE30862D8B002B800B /* Frameworks */,
+				313840FF30862D8B002B800B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3138410330862D8B002B800B /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				3138410430862D8B002B800B /* wallshiftTests */,
+			);
+			name = wallshiftTests;
+			productName = wallshiftTests;
+			productReference = 3138410130862D8B002B800B /* wallshiftTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		3138410A30862D8B002B800B /* wallshiftUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3138411A30862D8B002B800B /* Build configuration list for PBXNativeTarget "wallshiftUITests" */;
+			buildPhases = (
+				3138410730862D8B002B800B /* Sources */,
+				3138410830862D8B002B800B /* Frameworks */,
+				3138410930862D8B002B800B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3138410D30862D8B002B800B /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				3138410E30862D8B002B800B /* wallshiftUITests */,
+			);
+			name = wallshiftUITests;
+			productName = wallshiftUITests;
+			productReference = 3138410B30862D8B002B800B /* wallshiftUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		313840E030862D8A002B800B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					313840E730862D8A002B800B = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					3138410030862D8B002B800B = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = 313840E730862D8A002B800B;
+					};
+					3138410A30862D8B002B800B = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = 313840E730862D8A002B800B;
+					};
+				};
+			};
+			buildConfigurationList = 313840E330862D8A002B800B /* Build configuration list for PBXProject "wallshift" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 313840DF30862D8A002B800B;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 313840E930862D8A002B800B /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				313840E730862D8A002B800B /* wallshift */,
+				3138410030862D8B002B800B /* wallshiftTests */,
+				3138410A30862D8B002B800B /* wallshiftUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		313840E630862D8A002B800B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		313840FF30862D8B002B800B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		3138410930862D8B002B800B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		313840E430862D8A002B800B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		313840FD30862D8B002B800B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		3138410730862D8B002B800B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3138410330862D8B002B800B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 313840E730862D8A002B800B /* wallshift */;
+			targetProxy = 3138410230862D8B002B800B /* PBXContainerItemProxy */;
+		};
+		3138410D30862D8B002B800B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 313840E730862D8A002B800B /* wallshift */;
+			targetProxy = 3138410C30862D8B002B800B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		3138411330862D8B002B800B /* Debug configuration for PBXNativeTarget "wallshift" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HYQJ5TAAX3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = wallshift/Info.plist;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UIStatusBarHidden = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sbezhuk.wallshift;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		3138411430862D8B002B800B /* Release configuration for PBXNativeTarget "wallshift" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HYQJ5TAAX3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = wallshift/Info.plist;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UIStatusBarHidden = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sbezhuk.wallshift;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		3138411530862D8B002B800B /* Debug configuration for PBXProject "wallshift" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = HYQJ5TAAX3;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		3138411630862D8B002B800B /* Release configuration for PBXProject "wallshift" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = HYQJ5TAAX3;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		3138411830862D8B002B800B /* Debug configuration for PBXNativeTarget "wallshiftTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HYQJ5TAAX3;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sbezhuk.wallshiftTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/wallshift.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/wallshift";
+			};
+			name = Debug;
+		};
+		3138411930862D8B002B800B /* Release configuration for PBXNativeTarget "wallshiftTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HYQJ5TAAX3;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sbezhuk.wallshiftTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/wallshift.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/wallshift";
+			};
+			name = Release;
+		};
+		3138411B30862D8B002B800B /* Debug configuration for PBXNativeTarget "wallshiftUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HYQJ5TAAX3;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sbezhuk.wallshiftUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = wallshift;
+			};
+			name = Debug;
+		};
+		3138411C30862D8B002B800B /* Release configuration for PBXNativeTarget "wallshiftUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HYQJ5TAAX3;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sbezhuk.wallshiftUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = wallshift;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		313840E330862D8A002B800B /* Build configuration list for PBXProject "wallshift" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3138411530862D8B002B800B /* Debug configuration for PBXProject "wallshift" */,
+				3138411630862D8B002B800B /* Release configuration for PBXProject "wallshift" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		3138411230862D8B002B800B /* Build configuration list for PBXNativeTarget "wallshift" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3138411330862D8B002B800B /* Debug configuration for PBXNativeTarget "wallshift" */,
+				3138411430862D8B002B800B /* Release configuration for PBXNativeTarget "wallshift" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		3138411730862D8B002B800B /* Build configuration list for PBXNativeTarget "wallshiftTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3138411830862D8B002B800B /* Debug configuration for PBXNativeTarget "wallshiftTests" */,
+				3138411930862D8B002B800B /* Release configuration for PBXNativeTarget "wallshiftTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		3138411A30862D8B002B800B /* Build configuration list for PBXNativeTarget "wallshiftUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3138411B30862D8B002B800B /* Debug configuration for PBXNativeTarget "wallshiftUITests" */,
+				3138411C30862D8B002B800B /* Release configuration for PBXNativeTarget "wallshiftUITests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 313840E030862D8A002B800B /* Project object */;
+	validationLevel = 1;
+}
