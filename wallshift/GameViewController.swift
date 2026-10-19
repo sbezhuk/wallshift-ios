@@ -7,9 +7,14 @@
 
 import UIKit
 import SpriteKit
-import GameplayKit
 
 class GameViewController: UIViewController {
+
+    override func loadView() {
+        let skView = SKView()
+        skView.backgroundColor = .black
+        self.view = skView
+    }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()

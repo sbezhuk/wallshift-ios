@@ -177,6 +177,48 @@ final class PlayerNode: SKSpriteNode {
         run(fullJumpSequence, withKey: "jumpAction")
     }
     
+    /// Акробатичний плавний відскок на безпечну стіну без телепортації
+    func rebound(to targetX: CGFloat, onLeftWall targetIsLeft: Bool, duration: TimeInterval = 0.22, completion: (() -> Void)? = nil) {
+        guard currentState != .dead else { return }
+        removeAction(forKey: "jumpAction")
+        currentState = .jumping
+        
+        let targetRotation: CGFloat = targetIsLeft ? -.pi / 2.0 : .pi / 2.0
+        let halfDuration = duration * 0.5
+        
+        let moveX = SKAction.moveTo(x: targetX, duration: duration)
+        moveX.timingMode = .easeOut
+        
+        let midAirFlip = SKAction.sequence([
+            SKAction.rotate(toAngle: 0.0, duration: halfDuration),
+            SKAction.run { [weak self] in
+                self?.xScale = targetIsLeft ? -1.0 : 1.0
+            },
+            SKAction.rotate(toAngle: targetRotation, duration: halfDuration)
+        ])
+        midAirFlip.timingMode = .easeOut
+        
+        let flightGroup = SKAction.group([moveX, midAirFlip])
+        
+        let landAction = SKAction.run { [weak self] in
+            guard let self = self, self.currentState != .dead else { return }
+            self.isOnLeftWall = targetIsLeft
+            self.position.x = targetX
+            self.updateOrientation(forLeftWall: targetIsLeft)
+            self.currentState = .running
+            
+            let landingCushion = SKAction.sequence([
+                SKAction.scaleY(to: 0.82, duration: 0.04),
+                SKAction.scaleY(to: 1.0, duration: 0.08)
+            ])
+            self.run(landingCushion)
+            
+            completion?()
+        }
+        
+        run(SKAction.sequence([flightGroup, landAction]), withKey: "jumpAction")
+    }
+    
     /// Падіння героя безпосередньо всередину прірви (у точку розриву між уступами скелі)
     func fallIntoAbyss(targetPoint: CGPoint, completion: @escaping () -> Void) {
         guard currentState != .dead else { return }

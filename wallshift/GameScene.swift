@@ -6,7 +6,6 @@
 //
 
 import SpriteKit
-import GameplayKit
 import AVFoundation
 
 // MARK: - Physics Categories
@@ -23,10 +22,6 @@ struct PhysicsCategory {
 
 // MARK: - GameScene
 final class GameScene: SKScene, SKPhysicsContactDelegate {
-    
-    // Сумісність із GKScene (шаблоном Xcode)
-    var entities = [GKEntity]()
-    var graphs = [String: GKGraph]()
     
     // MARK: - Configuration Constants
     private enum Config {
@@ -200,6 +195,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var rightTrackNodes: [SKNode] = []
     private var trackHeartNodes: [SKNode] = []
     private var trackMobNodes: [MobNode] = []
+    private var activeFireArrows: [FireArrowNode] = []
     private var trackCoinNodes: [CoinNode] = []
     private var currentLeftY: CGFloat = 0
     private var currentRightY: CGFloat = 0
@@ -556,6 +552,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // Ворожі моби: перший моб з'являється на рандомній відмітці 500-1000 очок (в кожному раунді різний інтервал)
         trackMobNodes.removeAll()
+        activeFireArrows.forEach { $0.removeFromParent() }
+        activeFireArrows.removeAll()
         firstMobScoreThreshold = Int.random(in: 500...1000)
         nextMobY = startCameraY + (CGFloat(firstMobScoreThreshold) * Config.distancePerScorePoint)
         
@@ -1044,7 +1042,34 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         if let onLeft = targetSide {
             let wallX = onLeft ? (leftWallInnerX + MobNode.Constants.footOffset) : (rightWallInnerX - MobNode.Constants.footOffset)
-            let mob = MobNode(isOnLeftWall: onLeft, wallX: wallX, pointAY: candidateY, pointBY: endY, patrolSpeed: patrolSpeed)
+            
+            // Вибір типу моба: звичайний патрульний або моб-стрілець з вогняними стрілами
+            let shooterChance: Double
+            switch difficultyLevel {
+            case 0...9:
+                shooterChance = 0.35 // Початкові рівні: 35% стрільців
+            case 10...14:
+                shooterChance = 0.50
+            default:
+                shooterChance = 0.65 // Високі рівні: 65% стрільців
+            }
+            let mobType: MobNode.MobType = (Double.random(in: 0...1) < shooterChance) ? .shooter : .patroller
+            
+            let mob = MobNode(
+                mobType: mobType,
+                isOnLeftWall: onLeft,
+                wallX: wallX,
+                pointAY: candidateY,
+                pointBY: endY,
+                patrolSpeed: patrolSpeed
+            )
+            
+            if mobType == .shooter {
+                mob.onShootArrow = { [weak self] startPos, targetPos in
+                    self?.spawnFireArrow(from: startPos, towards: targetPos)
+                }
+            }
+            
             addChild(mob)
             trackMobNodes.append(mob)
             
@@ -1054,6 +1079,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             // Якщо зараз обидві стіни зайняті прірвами, відкладаємо перевірку на 120 pt вище
             nextMobY = candidateY + 120.0
         }
+    }
+    
+    /// Створення та додавання у сцену вогняної стріли, випущеної мобом-стрільцем
+    private func spawnFireArrow(from startPos: CGPoint, towards targetPos: CGPoint) {
+        guard !isGameOver, !isPlayerFalling else { return }
+        let arrow = FireArrowNode(from: startPos, towards: targetPos)
+        addChild(arrow)
+        activeFireArrows.append(arrow)
     }
     
     /// Процедурна генерація патернів золотистих монет на карті з суворою перевіркою безпеки (гарантовано не над прірвою):
@@ -1163,6 +1196,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             return false
         }
         
+        activeFireArrows.removeAll { arrow in
+            if arrow.position.y < screenBottom - 120.0 || arrow.parent == nil {
+                arrow.removeFromParent()
+                return true
+            }
+            return false
+        }
+        
         trackCoinNodes.removeAll { coin in
             if coin.position.y < screenBottom {
                 coin.removeFromParent()
@@ -1242,6 +1283,16 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                     celebrateLevelUp(level: currentLevel)
                 }
             }
+            
+            // Перевірка та активація стрільби мобів-стрільців при появі гравця на їхній стіні
+            for mob in trackMobNodes {
+                mob.updateShooting(
+                    playerPosition: player.position,
+                    playerIsOnLeftWall: player.isOnLeftWall,
+                    playerIsJumping: player.isJumping,
+                    currentTime: currentTime
+                )
+            }
         }
         
         // Безперервне поповнення доріжки наперед та очищення старих тайлів позаду
@@ -1284,11 +1335,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             handleHeartCollect(heart: heart)
         }
         
-        // 3. Зіткнення з ворожим мобом
+        // 3. Зіткнення з ворожим мобом або вогняною стрілою
         if mask == (PhysicsCategory.player | PhysicsCategory.obstacle) {
             guard !player.isInvulnerable else { return }
-            let mobNode = (contact.bodyA.categoryBitMask == PhysicsCategory.obstacle ? contact.bodyA.node : contact.bodyB.node) as? MobNode
-            handleMobHit(mob: mobNode)
+            let otherNode = contact.bodyA.categoryBitMask == PhysicsCategory.obstacle ? contact.bodyA.node : contact.bodyB.node
+            if let mobNode = otherNode as? MobNode {
+                handleMobHit(mob: mobNode)
+            } else if let arrowNode = otherNode as? FireArrowNode {
+                handleArrowHit(arrow: arrowNode)
+            }
         }
         
         // 4. Збір золотистої монети
@@ -1322,46 +1377,39 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
-    /// Відновлення героя на стіні вище прірви з 3 секундами моргання (невразливості)
+    /// Відновлення героя при потраплянні у прірву: плавний відскок на протилежну безпечну стіну
+    /// БЕЗ стрибків камери вперед та БЕЗ ефекту сіпання
     private func recoverFromAbyss(abyss: AbyssObstacleNode?) {
-        // Базова логіка прірви: гравець відновлюється на тій стіні, де знаходиться прірва,
-        // у яку він потрапив (навіть якщо зіткнення сталося під час перестрибування зі стіни на стіну).
-        let wallIsLeft = abyss?.isOnLeftWall ?? (player.position.x < size.width / 2.0)
-        let respawnX = wallIsLeft ? playerLeftX : playerRightX
+        // Визначаємо стіну з прірвою та безпечну протилежну стіну
+        let wallWithAbyssIsLeft = abyss?.isOnLeftWall ?? player.isOnLeftWall
+        let safeWallIsLeft = !wallWithAbyssIsLeft
+        let safeTargetX = safeWallIsLeft ? playerLeftX : playerRightX
         
-        // Підтягуємо вертикальну позицію камери так, щоб уся прірва гарантовано залишилася позаду
-        let abyssCenterY = abyss?.position.y ?? player.position.y
-        let gapHeight = abyss?.gapHeight ?? (Config.tileSize * 3.0)
-        let abyssTopY = abyssCenterY + (gapHeight / 2.0) + Config.tileSize
-        
-        let requiredCameraY = abyssTopY - playerCameraOffsetY
-        if cameraNode.position.y < requiredCameraY {
-            cameraNode.position.y = requiredCameraY
-        }
-        
-        let safeY = cameraNode.position.y + playerCameraOffsetY
-        
-        // Візуальний ефект удару (струс камери та короткий червоний спалах)
+        // Візуальний ефект удару без сіпання камери
         playHurtEffect()
         
-        // Відновлюємо гравця на стіні вище прірви
-        player.respawn(onLeftWall: wallIsLeft, at: CGPoint(x: respawnX, y: safeY))
+        // Плавний акробатичний стрибок-відскок на протилежну гарантовано суцільну стіну
+        player.rebound(to: safeTargetX, onLeftWall: safeWallIsLeft, duration: 0.22)
+        
+        // Вмикаємо 3 секунди невразливості з морганням
+        player.startInvulnerability(duration: 3.0)
     }
     
-    /// Візуальний ефект отримання пошкодження
+    /// Візуальний ефект отримання пошкодження (червоний спалах без тряски камери, що виключає сіпання)
     private func playHurtEffect() {
-        let flash = SKSpriteNode(color: SKColor.red.withAlphaComponent(0.35), size: size)
+        let flash = SKSpriteNode(color: SKColor.red.withAlphaComponent(0.32), size: size)
         flash.zPosition = 90
         cameraNode.addChild(flash)
         flash.run(SKAction.sequence([
-            SKAction.fadeOut(withDuration: 0.25),
+            SKAction.fadeOut(withDuration: 0.22),
             SKAction.removeFromParent()
         ]))
         
-        let shakeLeft = SKAction.moveBy(x: -6.0, y: 0, duration: 0.04)
-        let shakeRight = SKAction.moveBy(x: 12.0, y: 0, duration: 0.04)
-        let shakeBack = SKAction.moveBy(x: -6.0, y: 0, duration: 0.04)
-        cameraNode.run(SKAction.sequence([shakeLeft, shakeRight, shakeBack]))
+        // Короткий червоний спалах самого героя
+        player.run(SKAction.sequence([
+            SKAction.colorize(with: .red, colorBlendFactor: 0.6, duration: 0.08),
+            SKAction.colorize(withColorBlendFactor: 0.0, duration: 0.12)
+        ]))
     }
     
     /// Обробка підбору додаткового життя
@@ -1393,6 +1441,22 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     // MARK: - Lives & Mob Interaction
+    
+    /// Обробка потрапляння вогняної стріли моба-стрільця в героя
+    private func handleArrowHit(arrow: FireArrowNode) {
+        guard !player.isInvulnerable, !isGameOver, !isPlayerFalling else { return }
+        
+        arrow.explodeAndRemove()
+        currentLives -= 1
+        updateHUD()
+        playHurtEffect()
+        
+        if currentLives > 0 {
+            player.startInvulnerability(duration: 3.0)
+        } else {
+            triggerMobDefeat(reason: "Hit by fiery arrow")
+        }
+    }
     
     /// Обробка зіткнення героя з ворожим мобом
     private func handleMobHit(mob: MobNode?) {
