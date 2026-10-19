@@ -102,6 +102,20 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         return player.isJumping
     }
     
+    // MARK: - Game State
+    enum GameState {
+        case menu
+        case starting
+        case playing
+        case gameOver
+    }
+    private(set) var gameState: GameState = .menu
+    private let initialMode: GameState
+    
+    // Ноди та елементи головного меню
+    private var menuNode: SKNode?
+    private var soundIconSprite: SKSpriteNode?
+    
     /// Прапорець закінчення гри
     private(set) var isGameOver: Bool = false
     
@@ -235,6 +249,17 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         return rightWallInnerX - PlayerNode.Constants.footOffset
     }
     
+    // MARK: - Initializers
+    init(size: CGSize, initialMode: GameState = .menu) {
+        self.initialMode = initialMode
+        super.init(size: size)
+    }
+    
+    required init?(coder aDecoder: NSCoder) {
+        self.initialMode = .menu
+        super.init(coder: aDecoder)
+    }
+    
     // MARK: - Lifecycle
     override func didMove(to view: SKView) {
         // Очищаємо можливі стандартні ноди з шаблону Xcode (.sks)
@@ -267,11 +292,25 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         setupPhysicsWorld()
         setupCamera()
         setupAudio()
-        startBGM()
         setupBackground()
         setupPlayer()
         setupHUD()
         setupProceduralTrack()
+        
+        if initialMode == .menu {
+            gameState = .menu
+            isGameOver = false
+            player.setReadyStance()
+            hudNode.alpha = 0.0
+            showMainMenu(animated: false)
+            startBGM(lowVolume: true)
+        } else {
+            gameState = .playing
+            isGameOver = false
+            player.startRunningAnimation()
+            hudNode.alpha = 1.0
+            startBGM(lowVolume: false)
+        }
     }
     
     // MARK: - Setup Methods
@@ -366,14 +405,34 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
-    /// Динамічний запуск зацикленої фонової музики з швидким вступом (fade-in 0.6 с)
-    private func startBGM() {
+    private var isMuted: Bool {
+        return UserDefaults.standard.bool(forKey: "WallShiftMuted")
+    }
+    
+    /// Динамічний запуск зацикленої фонової музики (з пониженою гучністю для меню або повною для гри)
+    private func startBGM(lowVolume: Bool = false) {
+        guard !isMuted else { return }
         guard let player = bgmAudioPlayer else { return }
         player.numberOfLoops = -1
-        player.volume = 0.25
+        let targetVol = lowVolume ? Float(0.35) : GameScene.bgmTargetVolume
+        player.volume = lowVolume ? targetVol : 0.25
         player.currentTime = 0
         player.play()
-        player.setVolume(GameScene.bgmTargetVolume, fadeDuration: 0.6)
+        if !lowVolume {
+            player.setVolume(GameScene.bgmTargetVolume, fadeDuration: 0.6)
+        }
+    }
+    
+    private func toggleMute() {
+        let currentlyMuted = isMuted
+        UserDefaults.standard.set(!currentlyMuted, forKey: "WallShiftMuted")
+        let iconName = (!currentlyMuted) ? "gui_icon_audio_off" : "gui_icon_audio_on"
+        soundIconSprite?.texture = SKTexture(imageNamed: iconName)
+        if !currentlyMuted {
+            bgmAudioPlayer?.pause()
+        } else {
+            bgmAudioPlayer?.play()
+        }
     }
     
     /// Плавне спадання тону/гучності фонової музики (fade-out 2.0 с) при завершенні гри
@@ -389,21 +448,21 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     
     /// Відтворення звуку стрибка героя при тапі на екран
     private func playJumpSound() {
-        guard let audioPlayer = jumpAudioPlayer else { return }
+        guard !isMuted, let audioPlayer = jumpAudioPlayer else { return }
         audioPlayer.currentTime = 0
         audioPlayer.play()
     }
     
     /// Відтворення звуку закінчення гри при програші
     private func playGameOverSound() {
-        guard let audioPlayer = gameOverAudioPlayer else { return }
+        guard !isMuted, let audioPlayer = gameOverAudioPlayer else { return }
         audioPlayer.currentTime = 0
         audioPlayer.play()
     }
     
     /// Відтворення звуку підбору монети (coin_pickup)
     private func playCoinSound() {
-        guard !coinAudioPlayers.isEmpty else { return }
+        guard !isMuted, !coinAudioPlayers.isEmpty else { return }
         let player = coinAudioPlayers[currentCoinAudioIndex]
         currentCoinAudioIndex = (currentCoinAudioIndex + 1) % coinAudioPlayers.count
         player.currentTime = 0
@@ -527,6 +586,297 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let scaleUp = SKAction.scale(to: 1.45, duration: 0.18)
         let scaleDown = SKAction.scale(to: 1.0, duration: 0.18)
         scoreLabel.run(SKAction.sequence([scaleUp, scaleDown]), withKey: "pulseScore")
+    }
+    
+    // MARK: - In-Scene Seamless Main Menu
+    
+    /// Автоматичний періодичний стрибок героя між стінами під час перебування у головному меню
+    private func scheduleNextMenuAutoJump(delay: TimeInterval = 2.0) {
+        removeAction(forKey: "menuAutoJump")
+        guard gameState == .menu else { return }
+        
+        let wait = SKAction.wait(forDuration: delay)
+        let jump = SKAction.run { [weak self] in
+            guard let self = self, self.gameState == .menu, !self.player.isJumping else { return }
+            self.performJump()
+        }
+        run(SKAction.sequence([wait, jump]), withKey: "menuAutoJump")
+    }
+    
+    /// Відображення GUI головного меню безпосередньо поверх живого рівня
+    private func showMainMenu(animated: Bool = false) {
+        menuNode?.removeFromParent()
+        removeAction(forKey: "menuAutoJump")
+        
+        gameState = .menu
+        isGameOver = false
+        hudNode.alpha = 0.0
+        player.setReadyStance()
+        
+        // Запускаємо перший автоматичний стрибок через 1.8 с
+        scheduleNextMenuAutoJump(delay: 1.8)
+        
+        let container = SKNode()
+        container.zPosition = 150
+        menuNode = container
+        cameraNode.addChild(container)
+        
+        // 1. Логотип WALLSHIFT (на помаранчевому банері)
+        let titleContainer = SKNode()
+        titleContainer.name = "menuTitle"
+        titleContainer.position = CGPoint(x: 0, y: size.height * 0.24)
+        titleContainer.zPosition = 5
+        container.addChild(titleContainer)
+        
+        let bannerW = min(310.0, size.width - 50.0)
+        let bannerH = bannerW * (457.0 / 1139.0)
+        let banner = SKSpriteNode(imageNamed: "gui_banner_orange")
+        banner.size = CGSize(width: bannerW, height: bannerH)
+        banner.position = .zero
+        banner.zPosition = 1
+        titleContainer.addChild(banner)
+        
+        let shadowLabel = SKLabelNode(fontNamed: "HelveticaNeue-CondensedBlack")
+        shadowLabel.text = "WALLSHIFT"
+        shadowLabel.fontSize = min(44.0, size.width * 0.11)
+        shadowLabel.fontColor = SKColor(red: 0.12, green: 0.05, blue: 0.02, alpha: 0.95)
+        shadowLabel.position = CGPoint(x: 1.5, y: -bannerH * 0.08)
+        shadowLabel.zPosition = 2
+        titleContainer.addChild(shadowLabel)
+        
+        let titleLabel = SKLabelNode(fontNamed: "HelveticaNeue-CondensedBlack")
+        titleLabel.text = "WALLSHIFT"
+        titleLabel.fontSize = min(44.0, size.width * 0.11)
+        titleLabel.fontColor = .white
+        titleLabel.position = CGPoint(x: 0, y: -bannerH * 0.05)
+        titleLabel.zPosition = 3
+        titleContainer.addChild(titleLabel)
+        
+        let floatUp = SKAction.moveBy(x: 0, y: 4.0, duration: 1.8)
+        let floatDown = SKAction.moveBy(x: 0, y: -4.0, duration: 1.8)
+        floatUp.timingMode = .easeInEaseOut
+        floatDown.timingMode = .easeInEaseOut
+        titleContainer.run(SKAction.repeatForever(SKAction.sequence([floatUp, floatDown])))
+        
+        // 2. Картка статистики (Best Score & Coins) із GUI Bundle
+        let cardW: CGFloat = min(280.0, size.width - 70.0)
+        let cardH: CGFloat = 54.0
+        let card = SKSpriteNode(imageNamed: "gui_bar_orange")
+        card.name = "menuCard"
+        card.size = CGSize(width: cardW, height: cardH)
+        card.position = CGPoint(x: 0, y: size.height * 0.08)
+        card.zPosition = 5
+        container.addChild(card)
+        
+        let starIcon = SKSpriteNode(imageNamed: "gui_icon_star")
+        starIcon.size = CGSize(width: 22.0, height: 22.0)
+        starIcon.position = CGPoint(x: -cardW * 0.36, y: 0.0)
+        starIcon.zPosition = 2
+        card.addChild(starIcon)
+        
+        let bestScoreText = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        bestScoreText.text = "BEST: \(bestScore)"
+        bestScoreText.fontSize = 15.0
+        bestScoreText.fontColor = SKColor(red: 0.22, green: 0.09, blue: 0.03, alpha: 1.0)
+        bestScoreText.horizontalAlignmentMode = .left
+        bestScoreText.verticalAlignmentMode = .center
+        bestScoreText.position = CGPoint(x: -cardW * 0.26, y: 0.0)
+        bestScoreText.zPosition = 2
+        card.addChild(bestScoreText)
+        
+        let coinIcon = SKSpriteNode(imageNamed: "gui_icon_coin")
+        coinIcon.size = CGSize(width: 22.0, height: 22.0)
+        coinIcon.position = CGPoint(x: cardW * 0.12, y: 0.0)
+        coinIcon.zPosition = 2
+        card.addChild(coinIcon)
+        
+        let coinsText = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        coinsText.text = "\(totalCoins)"
+        coinsText.fontSize = 15.0
+        coinsText.fontColor = SKColor(red: 0.22, green: 0.09, blue: 0.03, alpha: 1.0)
+        coinsText.horizontalAlignmentMode = .left
+        coinsText.verticalAlignmentMode = .center
+        coinsText.position = CGPoint(x: cardW * 0.21, y: 0.0)
+        coinsText.zPosition = 2
+        card.addChild(coinsText)
+        
+        // 3. Кнопка START GAME із GUI Bundle
+        let btnW: CGFloat = min(250.0, size.width - 80.0)
+        let btnH: CGFloat = 68.0
+        let playBtn = SKSpriteNode(imageNamed: "gui_btn_large_orange")
+        playBtn.name = "menuPlayButton"
+        playBtn.size = CGSize(width: btnW, height: btnH)
+        playBtn.position = CGPoint(x: 0, y: -size.height * 0.06)
+        playBtn.zPosition = 5
+        container.addChild(playBtn)
+        
+        let playArrow = SKSpriteNode(imageNamed: "gui_icon_play")
+        playArrow.name = "menuPlayButton"
+        playArrow.size = CGSize(width: 22.0, height: 22.0)
+        playArrow.position = CGPoint(x: -btnW * 0.30, y: 1.0)
+        playArrow.zPosition = 2
+        playBtn.addChild(playArrow)
+        
+        let playLabel = SKLabelNode(fontNamed: "HelveticaNeue-CondensedBlack")
+        playLabel.name = "menuPlayButton"
+        playLabel.text = "START GAME"
+        playLabel.fontSize = 22.0
+        playLabel.fontColor = .white
+        playLabel.verticalAlignmentMode = .center
+        playLabel.horizontalAlignmentMode = .center
+        playLabel.position = CGPoint(x: 8.0, y: 1.0)
+        playLabel.zPosition = 2
+        playBtn.addChild(playLabel)
+        
+        let pulseUp = SKAction.scale(to: 1.05, duration: 0.85)
+        let pulseDown = SKAction.scale(to: 1.0, duration: 0.85)
+        pulseUp.timingMode = .easeInEaseOut
+        pulseDown.timingMode = .easeInEaseOut
+        playBtn.run(SKAction.repeatForever(SKAction.sequence([pulseUp, pulseDown])))
+        
+        // 4. Кнопка звуку із GUI Bundle (гучність вкл/викл)
+        let soundBtn = SKSpriteNode(imageNamed: "gui_btn_circle_orange")
+        soundBtn.name = "menuSoundButton"
+        soundBtn.size = CGSize(width: 48.0, height: 48.0)
+        soundBtn.position = CGPoint(
+            x: (size.width / 2.0) - 44.0,
+            y: (size.height / 2.0) - 58.0
+        )
+        soundBtn.zPosition = 10
+        container.addChild(soundBtn)
+        
+        let iconName = isMuted ? "gui_icon_audio_off" : "gui_icon_audio_on"
+        let soundIcon = SKSpriteNode(imageNamed: iconName)
+        soundIcon.name = "menuSoundButton"
+        soundIcon.size = CGSize(width: 26.0, height: 26.0)
+        soundIcon.position = .zero
+        soundIcon.zPosition = 2
+        soundBtn.addChild(soundIcon)
+        self.soundIconSprite = soundIcon
+        
+        // 5. Кнопка EXIT у самому низу меню із Basic_GUI_Bundle
+        let exitBtnW: CGFloat = min(170.0, size.width - 120.0)
+        let exitBtnH: CGFloat = exitBtnW * (304.0 / 983.0)
+        let exitBtn = SKSpriteNode(imageNamed: "gui_btn_exit_red")
+        exitBtn.name = "menuExitButton"
+        exitBtn.size = CGSize(width: exitBtnW, height: exitBtnH)
+        exitBtn.position = CGPoint(x: 0, y: -size.height * 0.28)
+        exitBtn.zPosition = 5
+        container.addChild(exitBtn)
+        
+        if animated {
+            container.alpha = 0.0
+            container.run(SKAction.fadeIn(withDuration: 0.30))
+        }
+    }
+    
+    /// Анімоване зникнення GUI меню та плавний старт бігу персонажа
+    private func dismissMenuAndStartClimb() {
+        guard gameState == .menu else { return }
+        gameState = .starting
+        removeAction(forKey: "menuAutoJump")
+        
+        playJumpSound()
+        
+        guard let menu = menuNode else {
+            startClimb()
+            return
+        }
+        
+        // Анімація зникнення кнопки старту
+        if let playBtn = menu.childNode(withName: "menuPlayButton") {
+            playBtn.run(SKAction.sequence([
+                SKAction.scale(to: 0.92, duration: 0.08),
+                SKAction.group([
+                    SKAction.scale(to: 0.65, duration: 0.22),
+                    SKAction.fadeOut(withDuration: 0.22)
+                ])
+            ]))
+        }
+        
+        // Анімація злітання логотипу вгору
+        if let title = menu.childNode(withName: "menuTitle") {
+            title.run(SKAction.group([
+                SKAction.moveBy(x: 0, y: 50.0, duration: 0.32),
+                SKAction.fadeOut(withDuration: 0.32)
+            ]))
+        }
+        
+        // Анімація згасання картки статистики
+        if let card = menu.childNode(withName: "menuCard") {
+            card.run(SKAction.group([
+                SKAction.scale(to: 0.85, duration: 0.28),
+                SKAction.fadeOut(withDuration: 0.28)
+            ]))
+        }
+        
+        // Анімація згасання кнопки звуку
+        if let soundBtn = menu.childNode(withName: "menuSoundButton") {
+            soundBtn.run(SKAction.fadeOut(withDuration: 0.25))
+        }
+        
+        // Анімація згасання кнопки виходу
+        if let exitBtn = menu.childNode(withName: "menuExitButton") {
+            exitBtn.run(SKAction.group([
+                SKAction.scale(to: 0.80, duration: 0.24),
+                SKAction.fadeOut(withDuration: 0.24)
+            ]))
+        }
+        
+        // Анімовано зникає GUI, і ПІСЛЯ ЦЬОГО починає бігти персонаж!
+        run(SKAction.sequence([
+            SKAction.wait(forDuration: 0.34),
+            SKAction.run { [weak self] in
+                self?.startClimb()
+            }
+        ]))
+    }
+    
+    /// Обробка виходу з гри при натисканні на кнопку Exit
+    private func handleExitApp() {
+        playJumpSound()
+        if let exitBtn = menuNode?.childNode(withName: "menuExitButton") {
+            exitBtn.run(SKAction.sequence([
+                SKAction.scale(to: 0.90, duration: 0.08),
+                SKAction.scale(to: 1.0, duration: 0.08),
+                SKAction.run {
+                    UIControl().sendAction(#selector(NSXPCConnection.suspend), to: UIApplication.shared, for: nil)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        exit(0)
+                    }
+                }
+            ]))
+        } else {
+            UIControl().sendAction(#selector(NSXPCConnection.suspend), to: UIApplication.shared, for: nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                exit(0)
+            }
+        }
+    }
+    
+    /// Запуск бігу героя та підйому камери з тієї стіни, на якій він стоїть
+    private func startClimb() {
+        menuNode?.removeFromParent()
+        menuNode = nil
+        removeAction(forKey: "menuAutoJump")
+        
+        // Плавна поява ігрового HUD (життя, рахунок, монети)
+        hudNode.alpha = 0.0
+        hudNode.run(SKAction.fadeIn(withDuration: 0.25))
+        
+        // Головний герой починає бігти з тієї стіни, на якій він стоїть!
+        if !player.isJumping {
+            player.startRunningAnimation()
+        }
+        
+        // Починається підйом камери та ігровий процес
+        gameState = .playing
+        lastUpdateTime = 0
+        
+        // Піднімаємо гучність фонової музики до повного ігрового рівня
+        if !isMuted {
+            bgmAudioPlayer?.setVolume(GameScene.bgmTargetVolume, fadeDuration: 0.6)
+        }
     }
     
     // MARK: - Procedural Track with Seamless Abysses, Hearts & Decorations
@@ -1239,14 +1589,53 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     
     // MARK: - Input Handling (Tap to Jump)
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        // Якщо гра закінчена, тап перезапускає сцену
-        if isGameOver {
+        guard let touch = touches.first else { return }
+        let locInCamera = touch.location(in: cameraNode)
+        
+        // 1. Режим головного меню
+        if gameState == .menu {
+            let touchedNodes = cameraNode.nodes(at: locInCamera)
+            for node in touchedNodes {
+                if node.name == "menuPlayButton" || node.parent?.name == "menuPlayButton" {
+                    dismissMenuAndStartClimb()
+                    return
+                }
+                if node.name == "menuSoundButton" || node.parent?.name == "menuSoundButton" {
+                    toggleMute()
+                    return
+                }
+                if node.name == "menuExitButton" || node.parent?.name == "menuExitButton" {
+                    handleExitApp()
+                    return
+                }
+            }
+            
+            // У меню гравець не тапає для зміни стіни — персонаж сам стрибає з інтервалом
+            return
+        }
+        
+        // 2. Меню анімовано зникає — ігноруємо тапи
+        guard gameState != .starting else { return }
+        
+        // 3. Якщо гра закінчена, перевіряємо натискання на кнопки оверлею
+        if gameState == .gameOver || isGameOver {
             gameOverAudioPlayer?.stop()
+            let touchedNodes = cameraNode.nodes(at: locInCamera)
+            for node in touchedNodes {
+                if node.name == "menuButton" || node.parent?.name == "menuButton" {
+                    goToMainMenu()
+                    return
+                }
+                if node.name == "retryButton" || node.parent?.name == "retryButton" {
+                    restartGame()
+                    return
+                }
+            }
             restartGame()
             return
         }
         
-        // Виконуємо стрибок, якщо герой не знаходиться в падінні
+        // 4. Активний біг у грі
         guard !isPlayerFalling else { return }
         performJump()
     }
@@ -1261,14 +1650,22 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let targetX: CGFloat = player.isOnLeftWall ? playerRightX : playerLeftX
         
         // Делегуємо виконання стрибка у PlayerNode
-        player.jump(to: targetX, duration: Config.jumpDuration) {
-            // Приземлення виконано успішно
+        player.jump(to: targetX, duration: Config.jumpDuration) { [weak self] in
+            guard let self = self else { return }
+            if self.gameState == .menu {
+                self.player.setReadyStance()
+                self.scheduleNextMenuAutoJump(delay: 2.0)
+            } else if self.gameState == .starting {
+                self.player.setReadyStance()
+            } else if self.gameState == .playing {
+                self.player.startRunningAnimation()
+            }
         }
     }
     
     // MARK: - Game Loop
     override func update(_ currentTime: TimeInterval) {
-        guard !isGameOver else { return }
+        guard gameState == .playing, !isGameOver else { return }
         
         if lastUpdateTime == 0 {
             lastUpdateTime = currentTime
@@ -1346,7 +1743,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         guard !isGameOver, !isPlayerFalling else { return }
         player.position.y = cameraNode.position.y + playerCameraOffsetY
         
-        // Якщо герой біжить по стіні (не в стрибку), строго фіксуємо його X на відповідній стіні
+        // Якщо герой на стіні (не в стрибку), строго фіксуємо його X на відповідній стіні
         if !player.isJumping {
             let currentWallX = player.isOnLeftWall ? playerLeftX : playerRightX
             player.position.x = currentWallX
@@ -1356,7 +1753,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     
     // MARK: - Physics Contact Delegate
     func didBegin(_ contact: SKPhysicsContact) {
-        guard !isGameOver, !isPlayerFalling else { return }
+        guard gameState == .playing, !isGameOver, !isPlayerFalling else { return }
         
         let mask = contact.bodyA.categoryBitMask | contact.bodyB.categoryBitMask
         
@@ -1429,31 +1826,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let safeWallIsLeft = !wallWithAbyssIsLeft
         let safeTargetX = safeWallIsLeft ? playerLeftX : playerRightX
         
-        // Візуальний ефект удару без сіпання камери
-        playHurtEffect()
-        
         // Плавний акробатичний стрибок-відскок на протилежну гарантовано суцільну стіну
         player.rebound(to: safeTargetX, onLeftWall: safeWallIsLeft, duration: 0.22)
         
         // Вмикаємо 3 секунди невразливості з морганням
         player.startInvulnerability(duration: 3.0)
-    }
-    
-    /// Візуальний ефект отримання пошкодження (червоний спалах без тряски камери, що виключає сіпання)
-    private func playHurtEffect() {
-        let flash = SKSpriteNode(color: SKColor.red.withAlphaComponent(0.32), size: size)
-        flash.zPosition = 90
-        cameraNode.addChild(flash)
-        flash.run(SKAction.sequence([
-            SKAction.fadeOut(withDuration: 0.22),
-            SKAction.removeFromParent()
-        ]))
-        
-        // Короткий червоний спалах самого героя
-        player.run(SKAction.sequence([
-            SKAction.colorize(with: .red, colorBlendFactor: 0.6, duration: 0.08),
-            SKAction.colorize(withColorBlendFactor: 0.0, duration: 0.12)
-        ]))
     }
     
     /// Обробка підбору додаткового життя
@@ -1493,7 +1870,6 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         arrow.explodeAndRemove()
         currentLives -= 1
         updateHUD()
-        playHurtEffect()
         
         if currentLives > 0 {
             player.startInvulnerability(duration: 3.0)
@@ -1508,7 +1884,6 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         currentLives -= 1
         updateHUD()
-        playHurtEffect()
         
         if currentLives > 0 {
             // Гравець втрачає 1 життя і моргає 3 секунди невразливим (може втекти або стрибнути)
@@ -1610,6 +1985,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func completeGameOver(message: String) {
         guard !isGameOver else { return }
         isGameOver = true
+        gameState = .gameOver
         
         // Якщо звук ще не почав грати, запускаємо його
         if gameOverAudioPlayer?.isPlaying != true {
@@ -1627,7 +2003,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         ]))
     }
     
-    private func showGameOverOverlay(subtitle: String = "Tap to restart") {
+    private func showGameOverOverlay(subtitle: String = "Fell into the abyss") {
         if score > bestScore {
             bestScore = score
         }
@@ -1635,51 +2011,168 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let container = SKNode()
         container.zPosition = 100
         
-        let titleLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        // Затемнюючий фон оверлею
+        let bgDim = SKShapeNode(rectOf: CGSize(width: size.width, height: size.height))
+        bgDim.fillColor = SKColor(red: 0.05, green: 0.03, blue: 0.02, alpha: 0.72)
+        bgDim.strokeColor = .clear
+        bgDim.position = .zero
+        bgDim.zPosition = 1
+        container.addChild(bgDim)
+        
+        // Головна діалогова картка (Box_Rounded)
+        let dialogW = min(320.0, size.width - 40.0)
+        let dialogH: CGFloat = 370.0
+        let dialogCard = SKSpriteNode(imageNamed: "gui_card_box")
+        dialogCard.size = CGSize(width: dialogW, height: dialogH)
+        dialogCard.position = CGPoint(x: 0, y: 10.0)
+        dialogCard.zPosition = 2
+        container.addChild(dialogCard)
+        
+        // Червоний банер GAME OVER угорі картки (Banner_Red)
+        let bannerW = min(260.0, dialogW - 20.0)
+        let bannerH = bannerW * (457.0 / 1139.0)
+        let redBanner = SKSpriteNode(imageNamed: "gui_banner_red")
+        redBanner.size = CGSize(width: bannerW, height: bannerH)
+        redBanner.position = CGPoint(x: 0, y: (dialogH / 2.0) - (bannerH * 0.45))
+        redBanner.zPosition = 3
+        dialogCard.addChild(redBanner)
+        
+        let titleShadow = SKLabelNode(fontNamed: "HelveticaNeue-CondensedBlack")
+        titleShadow.text = "GAME OVER"
+        titleShadow.fontSize = 28.0
+        titleShadow.fontColor = SKColor(red: 0.20, green: 0.04, blue: 0.04, alpha: 0.95)
+        titleShadow.position = CGPoint(x: 1.5, y: -bannerH * 0.09)
+        titleShadow.zPosition = 4
+        redBanner.addChild(titleShadow)
+        
+        let titleLabel = SKLabelNode(fontNamed: "HelveticaNeue-CondensedBlack")
         titleLabel.text = "GAME OVER"
-        titleLabel.fontSize = 38
+        titleLabel.fontSize = 28.0
         titleLabel.fontColor = .white
-        titleLabel.position = CGPoint(x: 0, y: 56)
-        
-        let scoreSummary = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-        scoreSummary.text = "SCORE: \(score)   BEST: \(bestScore)"
-        scoreSummary.fontSize = 19
-        scoreSummary.fontColor = SKColor(red: 1.0, green: 0.85, blue: 0.35, alpha: 1.0)
-        scoreSummary.position = CGPoint(x: 0, y: 20)
-        
-        let coinsSummary = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-        coinsSummary.text = "COINS: \(coinsCollected)   TOTAL: \(totalCoins)"
-        coinsSummary.fontSize = 17
-        coinsSummary.fontColor = SKColor(red: 1.0, green: 0.88, blue: 0.28, alpha: 1.0)
-        coinsSummary.position = CGPoint(x: 0, y: -10)
+        titleLabel.position = CGPoint(x: 0, y: -bannerH * 0.06)
+        titleLabel.zPosition = 5
+        redBanner.addChild(titleLabel)
         
         let reasonLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
         reasonLabel.text = subtitle
-        reasonLabel.fontSize = 16
-        reasonLabel.fontColor = SKColor(red: 0.98, green: 0.35, blue: 0.40, alpha: 1.0)
-        reasonLabel.position = CGPoint(x: 0, y: -38)
+        reasonLabel.fontSize = 14.0
+        reasonLabel.fontColor = SKColor(red: 0.95, green: 0.70, blue: 0.70, alpha: 1.0)
+        reasonLabel.position = CGPoint(x: 0, y: 78.0)
+        reasonLabel.zPosition = 3
+        dialogCard.addChild(reasonLabel)
         
-        let restartHint = SKLabelNode(fontNamed: "HelveticaNeue-Light")
-        restartHint.text = "Tap to restart"
-        restartHint.fontSize = 15
-        restartHint.fontColor = SKColor.white.withAlphaComponent(0.8)
-        restartHint.position = CGPoint(x: 0, y: -68)
+        // Картка результатів (ButtonText_Orange_TextField)
+        let statsW = dialogW - 40.0
+        let statsH: CGFloat = 70.0
+        let statsBar = SKSpriteNode(imageNamed: "gui_bar_orange")
+        statsBar.size = CGSize(width: statsW, height: statsH)
+        statsBar.position = CGPoint(x: 0, y: 18.0)
+        statsBar.zPosition = 3
+        dialogCard.addChild(statsBar)
         
-        container.addChild(titleLabel)
-        container.addChild(scoreSummary)
-        container.addChild(coinsSummary)
-        container.addChild(reasonLabel)
-        container.addChild(restartHint)
+        let star = SKSpriteNode(imageNamed: "gui_icon_star")
+        star.size = CGSize(width: 20.0, height: 20.0)
+        star.position = CGPoint(x: -statsW * 0.38, y: 12.0)
+        star.zPosition = 4
+        statsBar.addChild(star)
         
-        // Додаємо до cameraNode, щоб напис завжди був по центру поточного екрана
+        let scoreSummary = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        scoreSummary.text = "SCORE: \(score)   BEST: \(bestScore)"
+        scoreSummary.fontSize = 15.0
+        scoreSummary.fontColor = SKColor(red: 0.22, green: 0.09, blue: 0.03, alpha: 1.0)
+        scoreSummary.horizontalAlignmentMode = .left
+        scoreSummary.verticalAlignmentMode = .center
+        scoreSummary.position = CGPoint(x: -statsW * 0.28, y: 12.0)
+        scoreSummary.zPosition = 4
+        statsBar.addChild(scoreSummary)
+        
+        let coin = SKSpriteNode(imageNamed: "gui_icon_coin")
+        coin.size = CGSize(width: 20.0, height: 20.0)
+        coin.position = CGPoint(x: -statsW * 0.38, y: -14.0)
+        coin.zPosition = 4
+        statsBar.addChild(coin)
+        
+        let coinsSummary = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        coinsSummary.text = "COINS: +\(coinsCollected)   TOTAL: \(totalCoins)"
+        coinsSummary.fontSize = 14.0
+        coinsSummary.fontColor = SKColor(red: 0.22, green: 0.09, blue: 0.03, alpha: 1.0)
+        coinsSummary.horizontalAlignmentMode = .left
+        coinsSummary.verticalAlignmentMode = .center
+        coinsSummary.position = CGPoint(x: -statsW * 0.28, y: -14.0)
+        coinsSummary.zPosition = 4
+        statsBar.addChild(coinsSummary)
+        
+        // Кнопка PLAY AGAIN (ButtonText_Large_Orange_Round)
+        let retryBtnW = dialogW - 50.0
+        let retryBtnH: CGFloat = 56.0
+        let retryBtn = SKSpriteNode(imageNamed: "gui_btn_large_orange")
+        retryBtn.name = "retryButton"
+        retryBtn.size = CGSize(width: retryBtnW, height: retryBtnH)
+        retryBtn.position = CGPoint(x: 0, y: -54.0)
+        retryBtn.zPosition = 3
+        dialogCard.addChild(retryBtn)
+        
+        let retryIcon = SKSpriteNode(imageNamed: "gui_icon_restart")
+        retryIcon.name = "retryButton"
+        retryIcon.size = CGSize(width: 22.0, height: 22.0)
+        retryIcon.position = CGPoint(x: -retryBtnW * 0.28, y: 0)
+        retryIcon.zPosition = 4
+        retryBtn.addChild(retryIcon)
+        
+        let retryLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        retryLabel.name = "retryButton"
+        retryLabel.text = "PLAY AGAIN"
+        retryLabel.fontSize = 17.0
+        retryLabel.fontColor = .white
+        retryLabel.verticalAlignmentMode = .center
+        retryLabel.horizontalAlignmentMode = .center
+        retryLabel.position = CGPoint(x: 10.0, y: 0)
+        retryLabel.zPosition = 4
+        retryBtn.addChild(retryLabel)
+        
+        // Кнопка MAIN MENU (ButtonText_Small_Blue_Round)
+        let menuBtnW = dialogW - 70.0
+        let menuBtnH: CGFloat = 48.0
+        let menuBtn = SKSpriteNode(imageNamed: "gui_btn_small_blue")
+        menuBtn.name = "menuButton"
+        menuBtn.size = CGSize(width: menuBtnW, height: menuBtnH)
+        menuBtn.position = CGPoint(x: 0, y: -120.0)
+        menuBtn.zPosition = 3
+        dialogCard.addChild(menuBtn)
+        
+        let homeIcon = SKSpriteNode(imageNamed: "gui_icon_home")
+        homeIcon.name = "menuButton"
+        homeIcon.size = CGSize(width: 20.0, height: 20.0)
+        homeIcon.position = CGPoint(x: -menuBtnW * 0.26, y: 0)
+        homeIcon.zPosition = 4
+        menuBtn.addChild(homeIcon)
+        
+        let menuLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        menuLabel.name = "menuButton"
+        menuLabel.text = "MAIN MENU"
+        menuLabel.fontSize = 15.0
+        menuLabel.fontColor = .white
+        menuLabel.verticalAlignmentMode = .center
+        menuLabel.horizontalAlignmentMode = .center
+        menuLabel.position = CGPoint(x: 8.0, y: 0)
+        menuLabel.zPosition = 4
+        menuBtn.addChild(menuLabel)
+        
+        // Додаємо до cameraNode, щоб напис завжди був по центру поточного огляду камери
         cameraNode.addChild(container)
     }
     
     private func restartGame() {
         stopBGM(fadeDuration: 0.2)
-        let newScene = GameScene(size: size)
+        let newScene = GameScene(size: size, initialMode: .playing)
         newScene.scaleMode = scaleMode
-        let transition = SKTransition.fade(withDuration: 0.25)
-        view?.presentScene(newScene, transition: transition)
+        view?.presentScene(newScene)
+    }
+    
+    private func goToMainMenu() {
+        stopBGM(fadeDuration: 0.2)
+        let newScene = GameScene(size: size, initialMode: .menu)
+        newScene.scaleMode = scaleMode
+        view?.presentScene(newScene)
     }
 }

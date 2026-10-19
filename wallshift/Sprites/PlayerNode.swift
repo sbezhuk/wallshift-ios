@@ -9,6 +9,7 @@ import SpriteKit
 
 // MARK: - Player State
 enum PlayerState {
+    case idle
     case running
     case jumping
     case dead
@@ -126,6 +127,15 @@ final class PlayerNode: SKSpriteNode {
         run(runAction, withKey: "runAnimation")
     }
     
+    /// Стійка очікування / готовності героя на стіні (без анімації кроків)
+    func setReadyStance() {
+        removeAction(forKey: "runAnimation")
+        currentState = .idle
+        if let first = PlayerNode.runningTextures.first {
+            texture = first
+        }
+    }
+    
     /// Стрибок на протилежну стіну з переворотом у повітрі
     func jump(to targetX: CGFloat, duration: TimeInterval, completion: @escaping () -> Void) {
         guard currentState != .dead else { return }
@@ -182,6 +192,8 @@ final class PlayerNode: SKSpriteNode {
         guard currentState != .dead else { return }
         removeAction(forKey: "jumpAction")
         currentState = .jumping
+        self.color = .clear
+        self.colorBlendFactor = 0.0
         
         let targetRotation: CGFloat = targetIsLeft ? -.pi / 2.0 : .pi / 2.0
         let halfDuration = duration * 0.5
@@ -206,6 +218,8 @@ final class PlayerNode: SKSpriteNode {
             self.position.x = targetX
             self.updateOrientation(forLeftWall: targetIsLeft)
             self.currentState = .running
+            self.color = .clear
+            self.colorBlendFactor = 0.0
             
             let landingCushion = SKAction.sequence([
                 SKAction.scaleY(to: 0.82, duration: 0.04),
@@ -229,6 +243,8 @@ final class PlayerNode: SKSpriteNode {
         
         // Знижуємо zPosition до 2 (нижче ніж тайли скелі zPosition = 3, але вище за темний фон ями zPosition = 1)
         self.zPosition = 2
+        self.color = .clear
+        self.colorBlendFactor = 0.0
         
         // Політ безпосередньо в отвір прірви (туди, куди вказує розрив між уступами)
         let moveToHole = SKAction.move(to: targetPoint, duration: 0.45)
@@ -247,14 +263,13 @@ final class PlayerNode: SKSpriteNode {
         scaleY.timingMode = .easeIn
         let scaleDown = SKAction.group([scaleX, scaleY])
         
-        // Занурення та розчинення на тлі осіннього лісу
-        let darken = SKAction.colorize(with: SKColor(red: 0.18, green: 0.12, blue: 0.09, alpha: 1.0), colorBlendFactor: 0.95, duration: 0.35)
+        // Занурення та розчинення на тлі темної глибини
         let fadeOut = SKAction.sequence([
             SKAction.wait(forDuration: 0.15),
             SKAction.fadeOut(withDuration: 0.30)
         ])
         
-        let fallGroup = SKAction.group([moveToHole, rotateAction, scaleDown, darken, fadeOut])
+        let fallGroup = SKAction.group([moveToHole, rotateAction, scaleDown, fadeOut])
         run(fallGroup) {
             completion()
         }
@@ -266,6 +281,8 @@ final class PlayerNode: SKSpriteNode {
     func startInvulnerability(duration: TimeInterval = 3.0) {
         isInvulnerable = true
         removeAction(forKey: "invulnerabilityAction")
+        self.color = .clear
+        self.colorBlendFactor = 0.0
         
         let blinkInterval: TimeInterval = 0.12
         let blinkCount = Int(duration / (blinkInterval * 2.0))
@@ -278,6 +295,8 @@ final class PlayerNode: SKSpriteNode {
         let blinkSequence = SKAction.repeat(blinkStep, count: blinkCount)
         let finish = SKAction.run { [weak self] in
             self?.alpha = 1.0
+            self?.color = .clear
+            self?.colorBlendFactor = 0.0
             self?.isInvulnerable = false
         }
         
@@ -288,6 +307,8 @@ final class PlayerNode: SKSpriteNode {
     func cancelInvulnerability() {
         removeAction(forKey: "invulnerabilityAction")
         alpha = 1.0
+        color = .clear
+        colorBlendFactor = 0.0
         isInvulnerable = false
     }
     
@@ -303,6 +324,7 @@ final class PlayerNode: SKSpriteNode {
         
         self.position = newPosition
         self.zPosition = 5
+        self.color = .clear
         self.colorBlendFactor = 0.0
         self.alpha = 1.0
         
