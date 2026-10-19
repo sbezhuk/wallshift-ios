@@ -18,6 +18,7 @@ struct PhysicsCategory {
     static let obstacle: UInt32 = 1 << 2 // 4
     static let abyss: UInt32    = 1 << 3 // 8
     static let heart: UInt32    = 1 << 4 // 16
+    static let coin: UInt32     = 1 << 5 // 32
 }
 
 // MARK: - GameScene
@@ -80,6 +81,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - Audio
     private var jumpAudioPlayer: AVAudioPlayer?
     private var gameOverAudioPlayer: AVAudioPlayer?
+    private var coinAudioPlayers: [AVAudioPlayer] = []
+    private var currentCoinAudioIndex: Int = 0
+    private var bgmAudioPlayer: AVAudioPlayer?
+    private static let bgmTargetVolume: Float = 0.72
     
     // MARK: - Nodes & State
     private let cameraNode = SKCameraNode()
@@ -119,6 +124,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var startCameraY: CGFloat = 0
     private var scoreLabel = SKLabelNode()
     private var lastLevelCelebrated: Int = 0
+    
+    // MARK: - Coins System
+    private(set) var coinsCollected: Int = 0
+    private var totalCoins: Int {
+        get { UserDefaults.standard.integer(forKey: "TotalWallShiftCoins") }
+        set { UserDefaults.standard.set(newValue, forKey: "TotalWallShiftCoins") }
+    }
+    private var coinsLabel = SKLabelNode()
+    private var hudCoinIcon: SKSpriteNode?
     
     /// Рівень складності, що зростає кожні 100 очок (0, 1, 2, 3...)
     private var difficultyLevel: Int {
@@ -186,6 +200,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var rightTrackNodes: [SKNode] = []
     private var trackHeartNodes: [SKNode] = []
     private var trackMobNodes: [MobNode] = []
+    private var trackCoinNodes: [CoinNode] = []
     private var currentLeftY: CGFloat = 0
     private var currentRightY: CGFloat = 0
     
@@ -194,6 +209,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var consecutiveAbyssesOnSameWall: Int = 1
     private let maxConsecutiveAbyssesOnSameWall: Int = 2
     private var nextHeartY: CGFloat = 0
+    private var nextCoinPatternY: CGFloat = 0
     
     // Процедурний спавн ворожих мобів (перший моб з'являється на відмітці 500-1000 очків)
     private var firstMobScoreThreshold: Int = 0
@@ -240,17 +256,20 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         isGameOver = false
         currentLives = GameScene.maxLives
         score = 0
+        coinsCollected = 0
         lastLevelCelebrated = 0
         lastUpdateTime = 0
         leftTrackNodes.removeAll()
         rightTrackNodes.removeAll()
         trackHeartNodes.removeAll()
         trackMobNodes.removeAll()
+        trackCoinNodes.removeAll()
         decorationNodes.removeAll()
         
         setupPhysicsWorld()
         setupCamera()
         setupAudio()
+        startBGM()
         setupBackground()
         setupPlayer()
         setupHUD()
@@ -308,6 +327,66 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 print("Failed to initialize AVAudioPlayer for game_over from bundle file: \(error)")
             }
         }
+        
+        // Завантажуємо звук збору монети (Data Asset coin_pickup)
+        let coinData = NSDataAsset(name: "coin_pickup")?.data
+        if let data = coinData {
+            coinAudioPlayers.removeAll()
+            for _ in 0..<4 {
+                if let player = try? AVAudioPlayer(data: data) {
+                    player.prepareToPlay()
+                    player.volume = 0.85
+                    coinAudioPlayers.append(player)
+                }
+            }
+        }
+        
+        // Завантажуємо зациклену фонову музику (Data Asset background_music)
+        let bgmData = NSDataAsset(name: "background_music")?.data
+        if let data = bgmData {
+            do {
+                bgmAudioPlayer = try AVAudioPlayer(data: data, fileTypeHint: AVFileType.wav.rawValue)
+                bgmAudioPlayer?.numberOfLoops = -1
+                bgmAudioPlayer?.prepareToPlay()
+            } catch {
+                do {
+                    bgmAudioPlayer = try AVAudioPlayer(data: data)
+                    bgmAudioPlayer?.numberOfLoops = -1
+                    bgmAudioPlayer?.prepareToPlay()
+                } catch {
+                    print("Failed to initialize AVAudioPlayer for BGM from NSDataAsset: \(error)")
+                }
+            }
+        } else if let fileURL = Bundle.main.url(forResource: "background_music", withExtension: "wav") {
+            do {
+                bgmAudioPlayer = try AVAudioPlayer(contentsOf: fileURL)
+                bgmAudioPlayer?.numberOfLoops = -1
+                bgmAudioPlayer?.prepareToPlay()
+            } catch {
+                print("Failed to initialize AVAudioPlayer for BGM from bundle: \(error)")
+            }
+        }
+    }
+    
+    /// Динамічний запуск зацикленої фонової музики з швидким вступом (fade-in 0.6 с)
+    private func startBGM() {
+        guard let player = bgmAudioPlayer else { return }
+        player.numberOfLoops = -1
+        player.volume = 0.25
+        player.currentTime = 0
+        player.play()
+        player.setVolume(GameScene.bgmTargetVolume, fadeDuration: 0.6)
+    }
+    
+    /// Плавне спадання тону/гучності фонової музики (fade-out 2.0 с) при завершенні гри
+    private func stopBGM(fadeDuration: TimeInterval = 2.0) {
+        guard let player = bgmAudioPlayer, player.isPlaying else { return }
+        player.setVolume(0.0, fadeDuration: fadeDuration)
+        DispatchQueue.main.asyncAfter(deadline: .now() + fadeDuration) { [weak player] in
+            if player?.volume == 0.0 {
+                player?.stop()
+            }
+        }
     }
     
     /// Відтворення звуку стрибка героя при тапі на екран
@@ -322,6 +401,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         guard let audioPlayer = gameOverAudioPlayer else { return }
         audioPlayer.currentTime = 0
         audioPlayer.play()
+    }
+    
+    /// Відтворення звуку підбору монети (coin_pickup)
+    private func playCoinSound() {
+        guard !coinAudioPlayers.isEmpty else { return }
+        let player = coinAudioPlayers[currentCoinAudioIndex]
+        currentCoinAudioIndex = (currentCoinAudioIndex + 1) % coinAudioPlayers.count
+        player.currentTime = 0
+        player.play()
     }
     
     private func setupBackground() {
@@ -386,6 +474,24 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         scoreLabel.position = CGPoint(x: (size.width / 2.0) - 30.0, y: topY)
         scoreLabel.zPosition = 100
         hudNode.addChild(scoreLabel)
+        
+        // 3. Лічильник монет праворуч під очками
+        let coinIcon = SKSpriteNode(imageNamed: "coin_0")
+        coinIcon.size = CGSize(width: 18.0, height: 18.0)
+        coinIcon.position = CGPoint(x: (size.width / 2.0) - 72.0, y: topY - 26.0)
+        coinIcon.zPosition = 100
+        hudNode.addChild(coinIcon)
+        self.hudCoinIcon = coinIcon
+        
+        coinsLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        coinsLabel.text = "\(coinsCollected)"
+        coinsLabel.fontSize = 17
+        coinsLabel.fontColor = SKColor(red: 1.0, green: 0.86, blue: 0.28, alpha: 1.0)
+        coinsLabel.horizontalAlignmentMode = .right
+        coinsLabel.verticalAlignmentMode = .center
+        coinsLabel.position = CGPoint(x: (size.width / 2.0) - 30.0, y: topY - 26.0)
+        coinsLabel.zPosition = 100
+        hudNode.addChild(coinsLabel)
     }
     
     private func updateHUD(animated: Bool = true) {
@@ -453,6 +559,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         firstMobScoreThreshold = Int.random(in: 500...1000)
         nextMobY = startCameraY + (CGFloat(firstMobScoreThreshold) * Config.distancePerScorePoint)
         
+        // Золотисті монети: перша група монет з'являється вже на початку підйому (~250 pt)
+        trackCoinNodes.removeAll()
+        nextCoinPatternY = player.position.y + 250.0
+        
         // Початкові декорації біля стартової позиції гравця (природний антураж)
         setupInitialDecorations()
         
@@ -519,6 +629,21 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         
         return true
+    }
+    
+    /// Перевіряє, чи є заданий вертикальний діапазон стіни повністю суцільним (без прірв по всій висоті)
+    private func isWallRangeSolid(onLeftWall: Bool, minY: CGFloat, maxY: CGFloat, safetyMargin: CGFloat = 60.0) -> Bool {
+        let bottom = min(minY, maxY)
+        let top = max(minY, maxY)
+        var y = bottom
+        let step: CGFloat = 24.0
+        while y <= top {
+            if !isWallSolid(onLeftWall: onLeftWall, atY: y, safetyMargin: safetyMargin) {
+                return false
+            }
+            y += step
+        }
+        return isWallSolid(onLeftWall: onLeftWall, atY: top, safetyMargin: safetyMargin)
     }
     
     /// Спроба посадити фонове дерево тільки на суцільну скелю (гарантовано не над прірвою)
@@ -728,6 +853,12 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             if currentLeftY >= nextMobY {
                 trySpawnMob(candidateY: nextMobY)
             }
+            
+            // 6. Процедурна генерація золотистих монет (на стінах та в повітрі під час стрибків)
+            if currentLeftY >= nextCoinPatternY {
+                spawnCoinPattern(atY: nextCoinPatternY)
+                nextCoinPatternY = currentLeftY + CGFloat.random(in: 320.0...520.0)
+            }
         }
     }
     
@@ -809,18 +940,31 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         return tile
     }
     
-    /// Створює додаткове життя на карті
+    /// Створює додаткове життя на карті тільки в безпечному місці (гарантовано не над прірвою)
     private func spawnHeartItem(atY: CGFloat) {
-        let heart = HeartItemNode()
-        let roll = Int.random(in: 0...9)
+        let isLeftSafe = isWallRangeSolid(onLeftWall: true, minY: atY - 30.0, maxY: atY + 30.0, safetyMargin: 50.0)
+        let isRightSafe = isWallRangeSolid(onLeftWall: false, minY: atY - 30.0, maxY: atY + 30.0, safetyMargin: 50.0)
+        
         let heartX: CGFloat
-        if roll < 4 {
+        let roll = Int.random(in: 0...9)
+        
+        if roll < 4 && isLeftSafe {
             heartX = playerLeftX
-        } else if roll < 8 {
+        } else if roll < 8 && isRightSafe {
+            heartX = playerRightX
+        } else if isLeftSafe && isRightSafe {
+            heartX = size.width / 2.0
+        } else if isLeftSafe {
+            heartX = playerLeftX
+        } else if isRightSafe {
             heartX = playerRightX
         } else {
-            heartX = size.width / 2.0
+            // На обох стінах у цій точці прірва — відкладаємо появу серця вище на 150 pt
+            nextHeartY = atY + 150.0
+            return
         }
+        
+        let heart = HeartItemNode()
         heart.position = CGPoint(x: heartX, y: atY)
         addChild(heart)
         trackHeartNodes.append(heart)
@@ -912,6 +1056,77 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
+    /// Процедурна генерація патернів золотистих монет на карті з суворою перевіркою безпеки (гарантовано не над прірвою):
+    /// - 60% шанс: вертикальна доріжка з 3-4 монет уздовж однієї зі стін (тільки на повністю суцільній ділянці)
+    /// - 40% шанс: дуга з 5 монет між стінами каньйону для збору в стрибку (ОБИДВІ стіни мають бути суцільними)
+    private func spawnCoinPattern(atY: CGFloat) {
+        let patternRoll = Int.random(in: 1...100)
+        
+        if patternRoll <= 60 {
+            // Патерн 1: Вертикальна доріжка з 3-4 монет уздовж безпечної стіни
+            let coinCount = Int.random(in: 3...4)
+            let totalPatternHeight = CGFloat(coinCount - 1) * 36.0
+            let startY = atY
+            let endY = atY + totalPatternHeight
+            
+            let preferredLeft = Bool.random()
+            let chosenWall: Bool?
+            
+            // Перевіряємо стіну по всій довжині з запасом безпеки
+            if isWallRangeSolid(onLeftWall: preferredLeft, minY: startY - 35.0, maxY: endY + 35.0, safetyMargin: 50.0) {
+                chosenWall = preferredLeft
+            } else if isWallRangeSolid(onLeftWall: !preferredLeft, minY: startY - 35.0, maxY: endY + 35.0, safetyMargin: 50.0) {
+                chosenWall = !preferredLeft
+            } else {
+                chosenWall = nil
+            }
+            
+            if let wallIsLeft = chosenWall {
+                spawnWallCoinLine(onLeft: wallIsLeft, startY: startY, count: coinCount)
+            }
+        } else {
+            // Патерн 2: Параболічна дуга з 5 монет між стінами для динамічного збору під час стрибка.
+            // Щоб монети не вели гравця у прірву, ОБИДВІ стіни (ліва і права) мають бути безпечними!
+            let startY = atY
+            let endY = atY + 40.0
+            let isLeftSafe = isWallRangeSolid(onLeftWall: true, minY: startY - 40.0, maxY: endY + 50.0, safetyMargin: 60.0)
+            let isRightSafe = isWallRangeSolid(onLeftWall: false, minY: startY - 40.0, maxY: endY + 50.0, safetyMargin: 60.0)
+            
+            if isLeftSafe && isRightSafe {
+                // Обидві стіни монолітні — стрибок для збору монет 100% безпечний
+                let coinCount = 5
+                for i in 0..<coinCount {
+                    let t = CGFloat(i) / CGFloat(coinCount - 1)
+                    let x = playerLeftX + t * (playerRightX - playerLeftX)
+                    let arcLift = sin(t * .pi) * 32.0
+                    let y = atY + (t * 28.0) + arcLift
+                    
+                    let coin = CoinNode()
+                    coin.position = CGPoint(x: x, y: y)
+                    addChild(coin)
+                    trackCoinNodes.append(coin)
+                }
+            } else if isLeftSafe {
+                // Якщо права стіна має прірву, дугу не спавнимо, а ставимо монети безпечно на ліву стіну
+                spawnWallCoinLine(onLeft: true, startY: atY, count: 3)
+            } else if isRightSafe {
+                // Якщо ліва стіна має прірву, ставимо монети безпечно на праву стіну
+                spawnWallCoinLine(onLeft: false, startY: atY, count: 3)
+            }
+        }
+    }
+    
+    /// Допоміжний метод для розміщення вертикальної лінії монет на безпечній стіні
+    private func spawnWallCoinLine(onLeft: Bool, startY: CGFloat, count: Int) {
+        let coinX = onLeft ? playerLeftX : playerRightX
+        for i in 0..<count {
+            let coin = CoinNode()
+            coin.position = CGPoint(x: coinX, y: startY + CGFloat(i) * 36.0)
+            addChild(coin)
+            trackCoinNodes.append(coin)
+        }
+    }
+    
     /// Видаляє тайли та розриви, які залишилися далеко внизу за екраном
     private func cleanupPassedTrack() {
         let screenBottom = cameraNode.position.y - (size.height / 2.0) - 150.0
@@ -943,6 +1158,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         trackMobNodes.removeAll { mob in
             if mob.position.y < screenBottom {
                 mob.removeFromParent()
+                return true
+            }
+            return false
+        }
+        
+        trackCoinNodes.removeAll { coin in
+            if coin.position.y < screenBottom {
+                coin.removeFromParent()
                 return true
             }
             return false
@@ -1067,6 +1290,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             let mobNode = (contact.bodyA.categoryBitMask == PhysicsCategory.obstacle ? contact.bodyA.node : contact.bodyB.node) as? MobNode
             handleMobHit(mob: mobNode)
         }
+        
+        // 4. Збір золотистої монети
+        if mask == (PhysicsCategory.player | PhysicsCategory.coin) {
+            let coinNode = (contact.bodyA.categoryBitMask == PhysicsCategory.coin ? contact.bodyA.node : contact.bodyB.node) as? CoinNode
+            guard let coin = coinNode, !coin.isCollected else { return }
+            handleCoinCollect(coin: coin)
+        }
     }
     
     // MARK: - Lives & Abyss Interaction
@@ -1187,6 +1417,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         isPlayerFalling = true
         
         playGameOverSound()
+        stopBGM(fadeDuration: 2.0)
         print("Game Over: \(reason)")
         
         let defeatDirection: CGFloat = player.isOnLeftWall ? -30.0 : 30.0
@@ -1195,6 +1426,51 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         player.fallIntoAbyss(targetPoint: targetPoint) { [weak self] in
             self?.completeGameOver(message: "Caught by canyon monster")
         }
+    }
+    
+    // MARK: - Coins Collection
+    
+    /// Обробка збору золотистої монети гравцем
+    private func handleCoinCollect(coin: CoinNode) {
+        coin.collect()
+        coinsCollected += 1
+        totalCoins += 1
+        
+        // Звуковий ефект підбору монети
+        playCoinSound()
+        
+        // Оновлюємо лічильник монет у HUD
+        coinsLabel.text = "\(coinsCollected)"
+        
+        // Пружний сплеск іконки монети в HUD
+        hudCoinIcon?.removeAction(forKey: "coinPulse")
+        let scaleUpIcon = SKAction.scale(to: 1.38, duration: 0.08)
+        let scaleDownIcon = SKAction.scale(to: 1.0, duration: 0.12)
+        hudCoinIcon?.run(SKAction.sequence([scaleUpIcon, scaleDownIcon]), withKey: "coinPulse")
+        
+        // Сплеск тексту лічильника
+        coinsLabel.removeAction(forKey: "labelPulse")
+        let scaleUpText = SKAction.scale(to: 1.25, duration: 0.08)
+        let scaleDownText = SKAction.scale(to: 1.0, duration: 0.12)
+        coinsLabel.run(SKAction.sequence([scaleUpText, scaleDownText]), withKey: "labelPulse")
+        
+        // Спливаючий золотистий індикатор +1 над монетою
+        playCoinPickupEffect(at: coin.position)
+    }
+    
+    /// Спливаючий текст +1 золотистого кольору
+    private func playCoinPickupEffect(at position: CGPoint) {
+        let label = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        label.text = "+1"
+        label.fontSize = 15
+        label.fontColor = SKColor(red: 1.0, green: 0.88, blue: 0.30, alpha: 1.0)
+        label.position = position
+        label.zPosition = 50
+        addChild(label)
+        
+        let moveUp = SKAction.moveBy(x: 0, y: 26.0, duration: 0.45)
+        let fadeOut = SKAction.fadeOut(withDuration: 0.45)
+        label.run(SKAction.sequence([SKAction.group([moveUp, fadeOut]), SKAction.removeFromParent()]))
     }
     
     // MARK: - Game Over & Abyss Fall
@@ -1206,6 +1482,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // Відтворюємо звук закінчення гри
         playGameOverSound()
+        stopBGM(fadeDuration: 2.0)
         
         print("Game Over: \(reason)")
         
@@ -1230,6 +1507,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         if gameOverAudioPlayer?.isPlaying != true {
             playGameOverSound()
         }
+        stopBGM(fadeDuration: 1.5)
         
         showGameOverOverlay(subtitle: message)
         
@@ -1253,28 +1531,35 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         titleLabel.text = "GAME OVER"
         titleLabel.fontSize = 38
         titleLabel.fontColor = .white
-        titleLabel.position = CGPoint(x: 0, y: 46)
+        titleLabel.position = CGPoint(x: 0, y: 56)
         
         let scoreSummary = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
         scoreSummary.text = "SCORE: \(score)   BEST: \(bestScore)"
-        scoreSummary.fontSize = 20
+        scoreSummary.fontSize = 19
         scoreSummary.fontColor = SKColor(red: 1.0, green: 0.85, blue: 0.35, alpha: 1.0)
-        scoreSummary.position = CGPoint(x: 0, y: 10)
+        scoreSummary.position = CGPoint(x: 0, y: 20)
+        
+        let coinsSummary = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        coinsSummary.text = "COINS: \(coinsCollected)   TOTAL: \(totalCoins)"
+        coinsSummary.fontSize = 17
+        coinsSummary.fontColor = SKColor(red: 1.0, green: 0.88, blue: 0.28, alpha: 1.0)
+        coinsSummary.position = CGPoint(x: 0, y: -10)
         
         let reasonLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
         reasonLabel.text = subtitle
-        reasonLabel.fontSize = 17
+        reasonLabel.fontSize = 16
         reasonLabel.fontColor = SKColor(red: 0.98, green: 0.35, blue: 0.40, alpha: 1.0)
-        reasonLabel.position = CGPoint(x: 0, y: -20)
+        reasonLabel.position = CGPoint(x: 0, y: -38)
         
         let restartHint = SKLabelNode(fontNamed: "HelveticaNeue-Light")
         restartHint.text = "Tap to restart"
-        restartHint.fontSize = 16
+        restartHint.fontSize = 15
         restartHint.fontColor = SKColor.white.withAlphaComponent(0.8)
-        restartHint.position = CGPoint(x: 0, y: -52)
+        restartHint.position = CGPoint(x: 0, y: -68)
         
         container.addChild(titleLabel)
         container.addChild(scoreSummary)
+        container.addChild(coinsSummary)
         container.addChild(reasonLabel)
         container.addChild(restartHint)
         
@@ -1283,6 +1568,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     private func restartGame() {
+        stopBGM(fadeDuration: 0.2)
         let newScene = GameScene(size: size)
         newScene.scaleMode = scaleMode
         let transition = SKTransition.fade(withDuration: 0.25)

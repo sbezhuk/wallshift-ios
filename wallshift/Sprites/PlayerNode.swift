@@ -92,7 +92,7 @@ final class PlayerNode: SKSpriteNode {
         body.allowsRotation = false
         body.categoryBitMask = PhysicsCategory.player
         body.collisionBitMask = PhysicsCategory.none
-        body.contactTestBitMask = PhysicsCategory.obstacle | PhysicsCategory.abyss | PhysicsCategory.heart
+        body.contactTestBitMask = PhysicsCategory.obstacle | PhysicsCategory.abyss | PhysicsCategory.heart | PhysicsCategory.coin
         self.physicsBody = body
     }
     
