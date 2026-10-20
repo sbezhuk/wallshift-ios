@@ -49,6 +49,18 @@ final class FireArrowNode: SKSpriteNode {
         return textures
     }()
     
+    // Кешована текстура м'якого спалаху / світіння
+    private static let glowTexture: SKTexture = {
+        let dim: CGFloat = 32.0
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: dim, height: dim))
+        let image = renderer.image { _ in
+            let rect = CGRect(x: 2, y: 2, width: dim - 4, height: dim - 4)
+            UIColor.white.setFill()
+            UIBezierPath(ovalIn: rect).fill()
+        }
+        return SKTexture(image: image)
+    }()
+    
     private var activeTextures: [SKTexture] {
         return projectileType == .water ? FireArrowNode.waterArrowTextures : FireArrowNode.fireArrowTextures
     }
@@ -96,14 +108,13 @@ final class FireArrowNode: SKSpriteNode {
     
     // MARK: - Visual Glow
     private func setupFlameGlow() {
-        let glowNode = SKShapeNode(ellipseOf: CGSize(width: Constants.visualSize.width * 0.9, height: Constants.visualSize.height * 0.8))
+        let glowNode = SKSpriteNode(
+            texture: FireArrowNode.glowTexture,
+            color: projectileType == .water ? SKColor(red: 0.15, green: 0.70, blue: 1.0, alpha: 0.35) : SKColor(red: 1.0, green: 0.45, blue: 0.1, alpha: 0.28),
+            size: CGSize(width: Constants.visualSize.width * 0.9, height: Constants.visualSize.height * 0.8)
+        )
+        glowNode.colorBlendFactor = 1.0
         glowNode.position = CGPoint(x: -6.0, y: 0.0)
-        if projectileType == .water {
-            glowNode.fillColor = SKColor(red: 0.15, green: 0.70, blue: 1.0, alpha: 0.35)
-        } else {
-            glowNode.fillColor = SKColor(red: 1.0, green: 0.45, blue: 0.1, alpha: 0.28)
-        }
-        glowNode.strokeColor = .clear
         glowNode.zPosition = -1.0
         glowNode.blendMode = .add
         addChild(glowNode)
@@ -151,15 +162,12 @@ final class FireArrowNode: SKSpriteNode {
         removeAction(forKey: "flameAnimation")
         
         // Спалах полум'я / води
-        let burst = SKShapeNode(circleOfRadius: 18.0)
-        if projectileType == .water {
-            burst.fillColor = SKColor(red: 0.2, green: 0.85, blue: 1.0, alpha: 0.8)
-            burst.strokeColor = SKColor(red: 0.7, green: 0.95, blue: 1.0, alpha: 1.0)
-        } else {
-            burst.fillColor = SKColor(red: 1.0, green: 0.6, blue: 0.1, alpha: 0.8)
-            burst.strokeColor = SKColor.yellow
-        }
-        burst.lineWidth = 2.0
+        let burst = SKSpriteNode(
+            texture: FireArrowNode.glowTexture,
+            color: projectileType == .water ? SKColor(red: 0.3, green: 0.85, blue: 1.0, alpha: 0.9) : SKColor(red: 1.0, green: 0.65, blue: 0.15, alpha: 0.9),
+            size: CGSize(width: 36.0, height: 36.0)
+        )
+        burst.colorBlendFactor = 1.0
         burst.zPosition = 8.0
         burst.blendMode = .add
         addChild(burst)

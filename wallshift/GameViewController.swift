@@ -30,10 +30,13 @@ class GameViewController: UIViewController {
             let scene = GameScene(size: skView.bounds.size)
             scene.scaleMode = .resizeFill
             
-            skView.presentScene(scene)
             skView.ignoresSiblingOrder = true
+            skView.shouldCullNonVisibleNodes = true
+            skView.preferredFramesPerSecond = 120
             skView.showsFPS = false
             skView.showsNodeCount = false
+            
+            skView.presentScene(scene)
         }
     }
 

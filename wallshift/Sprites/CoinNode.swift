@@ -35,6 +35,12 @@ final class CoinNode: SKSpriteNode {
         return textures
     }()
     
+    private static let spinAction: SKAction = {
+        return SKAction.repeatForever(
+            SKAction.animate(with: CoinNode.spinTextures, timePerFrame: Constants.timePerFrame, resize: false, restore: true)
+        )
+    }()
+    
     // MARK: - Initialization
     init() {
         let initialTexture = CoinNode.spinTextures.first ?? SKTexture()
@@ -68,10 +74,7 @@ final class CoinNode: SKSpriteNode {
     // MARK: - Animations
     private func startSpinAnimation() {
         guard !CoinNode.spinTextures.isEmpty else { return }
-        let spinAction = SKAction.repeatForever(
-            SKAction.animate(with: CoinNode.spinTextures, timePerFrame: Constants.timePerFrame, resize: false, restore: true)
-        )
-        run(spinAction, withKey: "coinSpin")
+        run(CoinNode.spinAction, withKey: "coinSpin")
     }
     
     /// Анімація підбору монети з ефектом сплеску та розчинення

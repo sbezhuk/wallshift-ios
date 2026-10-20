@@ -27,6 +27,45 @@ enum AppFont {
     static let name: String = "JungleAdventurerRegular"
 }
 
+// MARK: - Reusable Pooled Particle Node
+final class PooledParticleNode: SKNode {
+    let emitter1: SKEmitterNode
+    let emitter2: SKEmitterNode
+    private(set) var inUse: Bool = false
+    
+    init(emitter1: SKEmitterNode, emitter2: SKEmitterNode) {
+        self.emitter1 = emitter1
+        self.emitter2 = emitter2
+        super.init()
+        self.zPosition = 4.8
+        addChild(emitter1)
+        addChild(emitter2)
+        self.isHidden = true
+    }
+    
+    required init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    func trigger(at pos: CGPoint, duration: TimeInterval = 0.35) {
+        self.position = pos
+        self.inUse = true
+        self.isHidden = false
+        emitter1.resetSimulation()
+        emitter2.resetSimulation()
+        
+        removeAction(forKey: "recycleAction")
+        let recycle = SKAction.sequence([
+            SKAction.wait(forDuration: duration),
+            SKAction.run { [weak self] in
+                self?.isHidden = true
+                self?.inUse = false
+            }
+        ])
+        run(recycle, withKey: "recycleAction")
+    }
+}
+
 // MARK: - GameScene
 final class GameScene: SKScene, SKPhysicsContactDelegate {
     
@@ -50,41 +89,45 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         static let backgroundColor = SKColor(red: 0.18, green: 0.12, blue: 0.09, alpha: 1.0)
     }
     
-    // MARK: - Cached Textures
-    private var backgroundTexture: SKTexture {
-        let name = currentTheme.backgroundTextureName
-        let tex = SKTexture(imageNamed: name)
-        tex.filteringMode = .linear
-        if tex.size().width > 0 {
-            return tex
-        }
-        let fallback = SKTexture(imageNamed: "backround")
-        fallback.filteringMode = .linear
-        return fallback
-    }
-    
-    // MARK: - Active Theme & Textures
+    // MARK: - Active Theme & Cached Textures
     private var currentTheme: ThemeData {
         return ThemeManager.shared.currentTheme
     }
     
-    private var wallTexture: SKTexture {
-        return SKTexture(imageNamed: currentTheme.wallTileName)
-    }
-    private var cliffLowerTexture: SKTexture {
-        return SKTexture(imageNamed: currentTheme.cliffLowerTileName)
-    }
-    private var cliffUpperTexture: SKTexture {
-        return SKTexture(imageNamed: currentTheme.cliffUpperTileName)
-    }
-    private var wallDirtTexture: SKTexture {
-        return SKTexture(imageNamed: currentTheme.wallDirtTileName)
-    }
-    private var wallRockTexture: SKTexture {
-        return SKTexture(imageNamed: currentTheme.wallRockTileName)
-    }
+    private var cachedBackgroundTexture: SKTexture = SKTexture()
+    private var cachedWallTexture: SKTexture = SKTexture()
+    private var cachedCliffLowerTexture: SKTexture = SKTexture()
+    private var cachedCliffUpperTexture: SKTexture = SKTexture()
+    private var cachedWallDirtTexture: SKTexture = SKTexture()
+    private var cachedWallRockTexture: SKTexture = SKTexture()
+    private var cachedTreeTextures: [SKTexture] = []
+    private var cachedBushTexture: SKTexture = SKTexture(imageNamed: "deco_bush_01")
+    private var cachedStumpTexture: SKTexture = SKTexture(imageNamed: "deco_stump")
+    private var cachedStoneTextures: [SKTexture] = [
+        SKTexture(imageNamed: "deco_stone_01"),
+        SKTexture(imageNamed: "deco_stone_02")
+    ]
+    private var cachedDecorTextures: [SKTexture] = []
+    private var cachedSignpostTextures: [SKTexture] = []
+    private var cachedPatrollerTextures: [SKTexture] = []
+    private var cachedShooterTextures: [SKTexture] = []
+    private var cachedHeartTexture: SKTexture = SKTexture()
     
-    // MARK: - Particle Textures
+    // Fast texture accessors
+    private var backgroundTexture: SKTexture { return cachedBackgroundTexture }
+    private var wallTexture: SKTexture { return cachedWallTexture }
+    private var cliffLowerTexture: SKTexture { return cachedCliffLowerTexture }
+    private var cliffUpperTexture: SKTexture { return cachedCliffUpperTexture }
+    private var wallDirtTexture: SKTexture { return cachedWallDirtTexture }
+    private var wallRockTexture: SKTexture { return cachedWallRockTexture }
+    private var treeTextures: [SKTexture] { return cachedTreeTextures }
+    private var bushTexture: SKTexture { return cachedBushTexture }
+    private var stumpTexture: SKTexture { return cachedStumpTexture }
+    private var stoneTextures: [SKTexture] { return cachedStoneTextures }
+    private var decorTextures: [SKTexture] { return cachedDecorTextures }
+    private var signpostTextures: [SKTexture] { return cachedSignpostTextures }
+    
+    // MARK: - Particle Textures & Pools
     private static let sparkTexture: SKTexture = {
         let dim: CGFloat = 24.0
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: dim, height: dim))
@@ -98,34 +141,102 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private static let starParticleTexture = SKTexture(imageNamed: "gui_icon_star")
     private static let heartParticleTexture = SKTexture(imageNamed: "life_hearth")
     
-    // MARK: - Decoration Textures
-    private var treeTextures: [SKTexture] {
-        return currentTheme.treeTextureNames.map { SKTexture(imageNamed: $0) }
-    }
-    private var bushTexture: SKTexture {
-        return SKTexture(imageNamed: "deco_bush_01")
-    }
-    private var stumpTexture: SKTexture {
-        return SKTexture(imageNamed: "deco_stump")
-    }
-    private var stoneTextures: [SKTexture] {
-        return [
-            SKTexture(imageNamed: "deco_stone_01"),
-            SKTexture(imageNamed: "deco_stone_02")
-        ]
-    }
-    private var decorTextures: [SKTexture] {
-        return currentTheme.decorTextureNames.map { SKTexture(imageNamed: $0) }
-    }
-    private var signpostTextures: [SKTexture] {
-        if !currentTheme.signpostTextureNames.isEmpty {
-            return currentTheme.signpostTextureNames.map { SKTexture(imageNamed: $0) }
+    private var coinPickupPool: [PooledParticleNode] = []
+    private var heartPickupPool: [PooledParticleNode] = []
+    
+    /// Завантаження та прогрів усіх текстур активної теми у пам'ять GPU для усунення мікрофризів
+    private func updateCachedThemeTextures() {
+        let theme = currentTheme
+        
+        let bgTex = SKTexture(imageNamed: theme.backgroundTextureName)
+        bgTex.filteringMode = .linear
+        if bgTex.size().width > 0 {
+            cachedBackgroundTexture = bgTex
+        } else {
+            let fallback = SKTexture(imageNamed: "backround")
+            fallback.filteringMode = .linear
+            cachedBackgroundTexture = fallback
         }
-        return [
-            SKTexture(imageNamed: "deco_sign_warning"),   // Варіант А: попередження (!)
-            SKTexture(imageNamed: "deco_sign_arrow"),     // Варіант Б: стрілка напрямку
-            SKTexture(imageNamed: "deco_sign_question")   // Варіант В: загадка (?)
+        
+        cachedWallTexture = SKTexture(imageNamed: theme.wallTileName)
+        cachedWallTexture.filteringMode = .linear
+        
+        cachedCliffLowerTexture = SKTexture(imageNamed: theme.cliffLowerTileName)
+        cachedCliffLowerTexture.filteringMode = .linear
+        
+        cachedCliffUpperTexture = SKTexture(imageNamed: theme.cliffUpperTileName)
+        cachedCliffUpperTexture.filteringMode = .linear
+        
+        cachedWallDirtTexture = SKTexture(imageNamed: theme.wallDirtTileName)
+        cachedWallDirtTexture.filteringMode = .linear
+        
+        cachedWallRockTexture = SKTexture(imageNamed: theme.wallRockTileName)
+        cachedWallRockTexture.filteringMode = .linear
+        
+        cachedTreeTextures = theme.treeTextureNames.map { name in
+            let tex = SKTexture(imageNamed: name)
+            tex.filteringMode = .linear
+            return tex
+        }
+        
+        cachedDecorTextures = theme.decorTextureNames.map { name in
+            let tex = SKTexture(imageNamed: name)
+            tex.filteringMode = .linear
+            return tex
+        }
+        
+        if !theme.signpostTextureNames.isEmpty {
+            cachedSignpostTextures = theme.signpostTextureNames.map { name in
+                let tex = SKTexture(imageNamed: name)
+                tex.filteringMode = .linear
+                return tex
+            }
+        } else {
+            cachedSignpostTextures = ["deco_sign_warning", "deco_sign_arrow", "deco_sign_question"].map { name in
+                let tex = SKTexture(imageNamed: name)
+                tex.filteringMode = .linear
+                return tex
+            }
+        }
+        
+        cachedPatrollerTextures = (0..<theme.patrollerFrameCount).map { i in
+            let tex = SKTexture(imageNamed: "\(theme.patrollerPrefix)\(i)")
+            tex.filteringMode = .linear
+            return tex
+        }
+        
+        cachedShooterTextures = (0..<theme.shooterFrameCount).map { i in
+            let tex = SKTexture(imageNamed: "\(theme.shooterPrefix)\(i)")
+            tex.filteringMode = .linear
+            return tex
+        }
+        
+        cachedHeartTexture = SKTexture(imageNamed: theme.heartTextureName)
+        cachedHeartTexture.filteringMode = .linear
+        
+        // Попереднє завантаження у VRAM для гарантування 60-120 FPS без просадок під час гри
+        var texturesToPreload: [SKTexture] = [
+            cachedBackgroundTexture,
+            cachedWallTexture,
+            cachedCliffLowerTexture,
+            cachedCliffUpperTexture,
+            cachedWallDirtTexture,
+            cachedWallRockTexture,
+            cachedHeartTexture,
+            cachedBushTexture,
+            cachedStumpTexture,
+            GameScene.sparkTexture,
+            GameScene.starParticleTexture,
+            GameScene.heartParticleTexture
         ]
+        texturesToPreload.append(contentsOf: cachedTreeTextures)
+        texturesToPreload.append(contentsOf: cachedStoneTextures)
+        texturesToPreload.append(contentsOf: cachedDecorTextures)
+        texturesToPreload.append(contentsOf: cachedSignpostTextures)
+        texturesToPreload.append(contentsOf: cachedPatrollerTextures)
+        texturesToPreload.append(contentsOf: cachedShooterTextures)
+        
+        SKTexture.preload(texturesToPreload) {}
     }
     
     // MARK: - Audio
@@ -293,6 +404,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - Procedural Track, Abyss, Hearts & Mobs Generation
     private var leftTrackNodes: [SKNode] = []
     private var rightTrackNodes: [SKNode] = []
+    private var leftAbyssNodes: [AbyssObstacleNode] = []
+    private var rightAbyssNodes: [AbyssObstacleNode] = []
+    private var lastCleanupCameraY: CGFloat = 0
     private var trackHeartNodes: [SKNode] = []
     private var trackMobNodes: [MobNode] = []
     private var activeFireArrows: [FireArrowNode] = []
@@ -340,11 +454,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     init(size: CGSize, initialMode: GameState = .menu) {
         self.initialMode = initialMode
         super.init(size: size)
+        updateCachedThemeTextures()
     }
     
     required init?(coder aDecoder: NSCoder) {
         self.initialMode = .menu
         super.init(coder: aDecoder)
+        updateCachedThemeTextures()
     }
     
     // MARK: - Lifecycle
@@ -371,6 +487,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         lastUpdateTime = 0
         leftTrackNodes.removeAll()
         rightTrackNodes.removeAll()
+        leftAbyssNodes.removeAll()
+        rightAbyssNodes.removeAll()
+        lastCleanupCameraY = 0
         trackHeartNodes.removeAll()
         trackMobNodes.removeAll()
         trackCoinNodes.removeAll()
@@ -378,6 +497,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         setupPhysicsWorld()
         setupCamera()
+        setupParticlePools()
         setupAudio()
         setupBackground()
         setupPlayer()
@@ -411,6 +531,106 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         cameraNode.position = CGPoint(x: size.width / 2.0, y: size.height / 2.0)
         camera = cameraNode
         addChild(cameraNode)
+    }
+    
+    /// Створення пулу багаторазових систем частинок для збору монет та сердець (усуває алокації під час бігу)
+    private func setupParticlePools() {
+        coinPickupPool.removeAll()
+        heartPickupPool.removeAll()
+        
+        // 1. Пул частинок для збору монет (8 пре-ініціалізованих нод)
+        for _ in 0..<8 {
+            let starEmitter = SKEmitterNode()
+            starEmitter.particleTexture = GameScene.starParticleTexture
+            starEmitter.particleBirthRate = 200
+            starEmitter.numParticlesToEmit = 8
+            starEmitter.particleLifetime = 0.28
+            starEmitter.particleLifetimeRange = 0.08
+            starEmitter.particleSpeed = 65.0
+            starEmitter.particleSpeedRange = 25.0
+            starEmitter.emissionAngle = 0
+            starEmitter.emissionAngleRange = .pi * 2.0
+            starEmitter.particleAlpha = 0.95
+            starEmitter.particleAlphaSpeed = -2.6
+            starEmitter.particleScale = 0.055
+            starEmitter.particleScaleRange = 0.02
+            starEmitter.particleScaleSpeed = -0.09
+            starEmitter.particleRotation = 0
+            starEmitter.particleRotationSpeed = .pi * 3.0
+            starEmitter.particleRotationRange = .pi * 2.0
+            starEmitter.particleBlendMode = .alpha
+            
+            let sparkEmitter = SKEmitterNode()
+            sparkEmitter.particleTexture = GameScene.sparkTexture
+            sparkEmitter.particleBirthRate = 250
+            sparkEmitter.numParticlesToEmit = 10
+            sparkEmitter.particleLifetime = 0.25
+            sparkEmitter.particleLifetimeRange = 0.06
+            sparkEmitter.particleSpeed = 75.0
+            sparkEmitter.particleSpeedRange = 25.0
+            sparkEmitter.emissionAngle = 0
+            sparkEmitter.emissionAngleRange = .pi * 2.0
+            sparkEmitter.particleAlpha = 0.95
+            sparkEmitter.particleAlphaSpeed = -3.0
+            sparkEmitter.particleScale = 0.16
+            sparkEmitter.particleScaleRange = 0.05
+            sparkEmitter.particleScaleSpeed = -0.25
+            sparkEmitter.particleColor = SKColor(red: 1.0, green: 0.88, blue: 0.30, alpha: 1.0)
+            sparkEmitter.particleColorBlendFactor = 1.0
+            sparkEmitter.particleBlendMode = .add
+            
+            let poolNode = PooledParticleNode(emitter1: starEmitter, emitter2: sparkEmitter)
+            addChild(poolNode)
+            coinPickupPool.append(poolNode)
+        }
+        
+        // 2. Пул частинок для збору сердець (3 пре-ініціалізовані ноди)
+        for _ in 0..<3 {
+            let heartEmitter = SKEmitterNode()
+            heartEmitter.particleTexture = cachedHeartTexture
+            heartEmitter.particleBirthRate = 200
+            heartEmitter.numParticlesToEmit = 7
+            heartEmitter.particleLifetime = 0.38
+            heartEmitter.particleLifetimeRange = 0.10
+            heartEmitter.particleSpeed = 65.0
+            heartEmitter.particleSpeedRange = 25.0
+            heartEmitter.emissionAngle = .pi / 2.0
+            heartEmitter.emissionAngleRange = .pi * 0.65
+            heartEmitter.yAcceleration = 25.0
+            heartEmitter.particleAlpha = 0.95
+            heartEmitter.particleAlphaSpeed = -2.2
+            heartEmitter.particleScale = 0.08
+            heartEmitter.particleScaleRange = 0.025
+            heartEmitter.particleScaleSpeed = -0.12
+            heartEmitter.particleRotation = 0
+            heartEmitter.particleRotationSpeed = .pi * 1.2
+            heartEmitter.particleRotationRange = .pi
+            heartEmitter.particleBlendMode = .alpha
+            
+            let healEmitter = SKEmitterNode()
+            healEmitter.particleTexture = GameScene.sparkTexture
+            healEmitter.particleBirthRate = 250
+            healEmitter.numParticlesToEmit = 10
+            healEmitter.particleLifetime = 0.35
+            healEmitter.particleLifetimeRange = 0.08
+            healEmitter.particleSpeed = 70.0
+            healEmitter.particleSpeedRange = 25.0
+            healEmitter.emissionAngle = .pi / 2.0
+            healEmitter.emissionAngleRange = .pi * 0.85
+            healEmitter.yAcceleration = 30.0
+            healEmitter.particleAlpha = 0.9
+            healEmitter.particleAlphaSpeed = -2.4
+            healEmitter.particleScale = 0.16
+            healEmitter.particleScaleRange = 0.05
+            healEmitter.particleScaleSpeed = -0.25
+            healEmitter.particleColor = SKColor(red: 0.35, green: 0.98, blue: 0.55, alpha: 1.0)
+            healEmitter.particleColorBlendFactor = 1.0
+            healEmitter.particleBlendMode = .add
+            
+            let poolNode = PooledParticleNode(emitter1: heartEmitter, emitter2: healEmitter)
+            addChild(poolNode)
+            heartPickupPool.append(poolNode)
+        }
     }
     
     private func setupAudio() {
@@ -1362,6 +1582,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     /// Миттєве застосування поточної теми до сцени (персонаж, стіни, фон)
     private func applyCurrentThemeToScene() {
         let theme = ThemeManager.shared.currentTheme
+        updateCachedThemeTextures()
         
         // 1. Оновлення образу персонажа
         player.applyTheme(prefix: theme.heroRunPrefix, frameCount: theme.heroRunCount)
@@ -1393,10 +1614,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         backgroundOverlayNode?.run(SKAction.colorize(with: theme.backgroundOverlayColor, colorBlendFactor: 1.0, duration: 0.35))
         backgroundOverlayNode?.run(SKAction.fadeAlpha(to: theme.backgroundOverlayAlpha, duration: 0.35))
         
-        // Оновлення текстури сердець у HUD
-        let heartTex = SKTexture(imageNamed: theme.heartTextureName)
+        // Оновлення текстури сердець у HUD та пулі частинок
+        let heartTex = cachedHeartTexture
         for heart in heartHUDNodes {
             heart.texture = heartTex
+        }
+        for node in heartPickupPool {
+            node.emitter1.particleTexture = heartTex
         }
         
         // 3. Повне перезавантаження траси, стін, прірв та декорацій під нову тему (у режимі меню)
@@ -1405,6 +1629,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             leftTrackNodes.removeAll()
             rightTrackNodes.forEach { $0.removeFromParent() }
             rightTrackNodes.removeAll()
+            leftAbyssNodes.removeAll()
+            rightAbyssNodes.removeAll()
             decorationNodes.forEach { $0.removeFromParent() }
             decorationNodes.removeAll()
             trackHeartNodes.forEach { $0.removeFromParent() }
@@ -1500,6 +1726,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         currentLeftY = Config.tileSize / 2.0
         currentRightY = Config.tileSize / 2.0
         startCameraY = cameraNode.position.y
+        lastCleanupCameraY = startCameraY
+        leftAbyssNodes.removeAll()
+        rightAbyssNodes.removeAll()
         
         decorationNodes.removeAll()
         lastLeftDecoY = 0
@@ -1590,17 +1819,19 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
-    /// Перевіряє, чи є на стіні безпечна суцільна ділянка скелі без прірв
-    private func isWallSolid(onLeftWall: Bool, atY yPos: CGFloat, safetyMargin: CGFloat = 80.0) -> Bool {
-        let trackNodes = onLeftWall ? leftTrackNodes : rightTrackNodes
-        for node in trackNodes {
-            if let abyss = node as? AbyssObstacleNode {
-                let abyssHalfHeight = (abyss.gapHeight / 2.0) + Config.tileSize
-                let abyssMinY = abyss.position.y - abyssHalfHeight - safetyMargin
-                let abyssMaxY = abyss.position.y + abyssHalfHeight + safetyMargin
-                if yPos >= abyssMinY && yPos <= abyssMaxY {
-                    return false
-                }
+    /// Перевіряє, чи є заданий вертикальний діапазон стіни повністю суцільним (без прірв по всій висоті)
+    private func isWallRangeSolid(onLeftWall: Bool, minY: CGFloat, maxY: CGFloat, safetyMargin: CGFloat = 60.0) -> Bool {
+        let bottom = min(minY, maxY)
+        let top = max(minY, maxY)
+        let abyssNodes = onLeftWall ? leftAbyssNodes : rightAbyssNodes
+        
+        for abyss in abyssNodes {
+            let abyssHalfHeight = (abyss.gapHeight / 2.0) + Config.tileSize
+            let abyssMinY = abyss.position.y - abyssHalfHeight - safetyMargin
+            let abyssMaxY = abyss.position.y + abyssHalfHeight + safetyMargin
+            // Швидка O(1) перевірка перетину двох відрізків [bottom, top] та [abyssMinY, abyssMaxY]
+            if max(bottom, abyssMinY) <= min(top, abyssMaxY) {
+                return false
             }
         }
         
@@ -1608,7 +1839,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         if nextAbyssIsOnLeft == onLeftWall {
             let plannedMinY = nextAbyssY - safetyMargin
             let plannedMaxY = nextAbyssY + (Config.tileSize * 4.0) + safetyMargin
-            if yPos >= plannedMinY && yPos <= plannedMaxY {
+            if max(bottom, plannedMinY) <= min(top, plannedMaxY) {
                 return false
             }
         }
@@ -1616,19 +1847,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         return true
     }
     
-    /// Перевіряє, чи є заданий вертикальний діапазон стіни повністю суцільним (без прірв по всій висоті)
-    private func isWallRangeSolid(onLeftWall: Bool, minY: CGFloat, maxY: CGFloat, safetyMargin: CGFloat = 60.0) -> Bool {
-        let bottom = min(minY, maxY)
-        let top = max(minY, maxY)
-        var y = bottom
-        let step: CGFloat = 24.0
-        while y <= top {
-            if !isWallSolid(onLeftWall: onLeftWall, atY: y, safetyMargin: safetyMargin) {
-                return false
-            }
-            y += step
-        }
-        return isWallSolid(onLeftWall: onLeftWall, atY: top, safetyMargin: safetyMargin)
+    /// Перевіряє, чи є на стіні безпечна суцільна ділянка скелі без прірв
+    private func isWallSolid(onLeftWall: Bool, atY yPos: CGFloat, safetyMargin: CGFloat = 80.0) -> Bool {
+        return isWallRangeSolid(onLeftWall: onLeftWall, minY: yPos, maxY: yPos, safetyMargin: safetyMargin)
     }
     
     /// Спроба посадити фонове дерево тільки на суцільну скелю (гарантовано не над прірвою)
@@ -1934,6 +2155,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             gapObstacle.position = CGPoint(x: Config.wallWidth / 2.0, y: gapCenterY)
             addChild(gapObstacle)
             leftTrackNodes.append(gapObstacle)
+            leftAbyssNodes.append(gapObstacle)
             currentLeftY += gapHeight
             
             // Крок В: Верхній уступ обриву стіни (Ground 04) - ідеально переходить у доріжку вгорі
@@ -1956,6 +2178,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             gapObstacle.position = CGPoint(x: size.width - (Config.wallWidth / 2.0), y: gapCenterY)
             addChild(gapObstacle)
             rightTrackNodes.append(gapObstacle)
+            rightAbyssNodes.append(gapObstacle)
             currentRightY += gapHeight
             
             // Крок В: Верхній уступ обриву стіни (Ground 04) на правій стіні
@@ -1982,13 +2205,6 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             tile.xScale = -1.0
             tile.position = CGPoint(x: size.width - (tileSize / 2.0), y: yPos)
         }
-        
-        let body = SKPhysicsBody(rectangleOf: CGSize(width: tileSize, height: tileSize))
-        body.isDynamic = false
-        body.categoryBitMask = PhysicsCategory.wall
-        body.collisionBitMask = PhysicsCategory.none
-        body.contactTestBitMask = PhysicsCategory.none
-        tile.physicsBody = body
         
         return tile
     }
@@ -2126,15 +2342,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             
             let wallX = onLeft ? (leftWallInnerX + MobNode.Constants.footOffset) : (rightWallInnerX - MobNode.Constants.footOffset)
             let mobType = finalMobType
-            
-            // Текстури мобів відповідно до обраної теми
-            let patrollerTextures: [SKTexture] = (0..<currentTheme.patrollerFrameCount).map {
-                SKTexture(imageNamed: "\(currentTheme.patrollerPrefix)\($0)")
-            }
-            let shooterTextures: [SKTexture] = (0..<currentTheme.shooterFrameCount).map {
-                SKTexture(imageNamed: "\(currentTheme.shooterPrefix)\($0)")
-            }
-            let activeTextures = (mobType == .shooter) ? shooterTextures : patrollerTextures
+            let activeTextures = (mobType == .shooter) ? cachedShooterTextures : cachedPatrollerTextures
             
             let mob = MobNode(
                 mobType: mobType,
@@ -2246,28 +2454,46 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
-    /// Видаляє тайли та розриви, які залишилися далеко внизу за екраном
-    private func cleanupPassedTrack() {
-        let screenBottom = cameraNode.position.y - (size.height / 2.0) - 150.0
+    /// Видаляє тайли та розриви, які залишилися далеко внизу за екраном (з розумним тротлінгом для стабільних 60-120 FPS)
+    private func cleanupPassedTrack(force: Bool = false) {
+        let currentCamY = cameraNode.position.y
+        if !force && (currentCamY - lastCleanupCameraY) < 40.0 {
+            return
+        }
+        lastCleanupCameraY = currentCamY
         
-        leftTrackNodes.removeAll { node in
-            if node.position.y < screenBottom {
-                node.removeFromParent()
-                return true
+        let screenBottom = currentCamY - (size.height / 2.0) - 150.0
+        
+        // Видалення зі стін (масиви впорядковані по Y за зростанням, швидке пакетне видалення O(1))
+        let removeLeftCount = leftTrackNodes.prefix(while: { $0.position.y < screenBottom }).count
+        if removeLeftCount > 0 {
+            for i in 0..<removeLeftCount {
+                leftTrackNodes[i].removeFromParent()
             }
-            return false
+            leftTrackNodes.removeFirst(removeLeftCount)
         }
         
-        rightTrackNodes.removeAll { node in
-            if node.position.y < screenBottom {
-                node.removeFromParent()
-                return true
+        let removeRightCount = rightTrackNodes.prefix(while: { $0.position.y < screenBottom }).count
+        if removeRightCount > 0 {
+            for i in 0..<removeRightCount {
+                rightTrackNodes[i].removeFromParent()
             }
-            return false
+            rightTrackNodes.removeFirst(removeRightCount)
         }
+        
+        let removeDecoCount = decorationNodes.prefix(while: { $0.position.y < screenBottom }).count
+        if removeDecoCount > 0 {
+            for i in 0..<removeDecoCount {
+                decorationNodes[i].removeFromParent()
+            }
+            decorationNodes.removeFirst(removeDecoCount)
+        }
+        
+        leftAbyssNodes.removeAll { $0.position.y < screenBottom || $0.parent == nil }
+        rightAbyssNodes.removeAll { $0.position.y < screenBottom || $0.parent == nil }
         
         trackHeartNodes.removeAll { node in
-            if node.position.y < screenBottom {
+            if node.position.y < screenBottom || node.parent == nil {
                 node.removeFromParent()
                 return true
             }
@@ -2291,16 +2517,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         
         trackCoinNodes.removeAll { coin in
-            if coin.position.y < screenBottom {
+            if coin.position.y < screenBottom || coin.parent == nil {
                 coin.removeFromParent()
-                return true
-            }
-            return false
-        }
-        
-        decorationNodes.removeAll { node in
-            if node.position.y < screenBottom {
-                node.removeFromParent()
                 return true
             }
             return false
@@ -2492,8 +2710,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             return
         }
         
-        let deltaTime = currentTime - lastUpdateTime
+        var deltaTime = currentTime - lastUpdateTime
         lastUpdateTime = currentTime
+        
+        // Захист від різких стрибків дельти часу (при перериваннях системи чи навантаженні)
+        if deltaTime > 0.1 {
+            deltaTime = 1.0 / 60.0
+        }
         
         // Постійне плавне переміщення камери вгору із динамічною швидкістю.
         // При падінні героя в прірву камера зупиняється, фіксуючи погляд на розриві стіни.
@@ -2549,34 +2772,30 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         cleanupPassedTrack()
     }
     
-    /// Перевіряє, чи є розрив стіни (прірва) у вказаному діапазоні висоти
+    /// Перевіряє, чи є розрив стіни (прірва) у вказаному діапазоні висоти (швидка перевірка O(1))
     private func hasAbyssOnWall(isLeft: Bool, nearY: CGFloat, range: CGFloat = 80.0) -> Bool {
-        let trackNodes = isLeft ? leftTrackNodes : rightTrackNodes
-        for node in trackNodes {
-            if let abyss = node as? AbyssObstacleNode {
-                let halfH = abyss.gapHeight / 2.0
-                let minY = abyss.position.y - halfH - range
-                let maxY = abyss.position.y + halfH + range
-                if nearY >= minY && nearY <= maxY {
-                    return true
-                }
+        let abyssNodes = isLeft ? leftAbyssNodes : rightAbyssNodes
+        for abyss in abyssNodes {
+            let halfH = abyss.gapHeight / 2.0
+            let minY = abyss.position.y - halfH - range
+            let maxY = abyss.position.y + halfH + range
+            if nearY >= minY && nearY <= maxY {
+                return true
             }
         }
         return false
     }
     
-    /// Перевіряє, чи знаходиться гравець безпосередньо над прірвою (в розриві стіни)
+    /// Перевіряє, чи знаходиться гравець безпосередньо над прірвою (в розриві стіни) (швидка перевірка O(1))
     private func checkAbyssUnderPlayer() -> AbyssObstacleNode? {
-        let trackNodes = player.isOnLeftWall ? leftTrackNodes : rightTrackNodes
+        let abyssNodes = player.isOnLeftWall ? leftAbyssNodes : rightAbyssNodes
         let playerY = player.position.y
-        for node in trackNodes {
-            if let abyss = node as? AbyssObstacleNode {
-                let halfH = abyss.gapHeight / 2.0
-                let minY = abyss.position.y - halfH + 4.0
-                let maxY = abyss.position.y + halfH - 4.0
-                if playerY >= minY && playerY <= maxY {
-                    return abyss
-                }
+        for abyss in abyssNodes {
+            let halfH = abyss.gapHeight / 2.0
+            let minY = abyss.position.y - halfH + 4.0
+            let maxY = abyss.position.y + halfH - 4.0
+            if playerY >= minY && playerY <= maxY {
+                return abyss
             }
         }
         return nil
@@ -2588,6 +2807,17 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         player.position.y = cameraNode.position.y + playerCameraOffsetY
         
         // Якщо герой на стіні (не в стрибку), строго фіксуємо його X на відповідній стіні
+        if !player.isJumping {
+            let currentWallX = player.isOnLeftWall ? playerLeftX : playerRightX
+            player.position.x = currentWallX
+            player.physicsBody?.velocity = .zero
+        }
+    }
+    
+    override func didSimulatePhysics() {
+        // Гарантуємо бездоганну фіксацію положення гравця після завершення кроку фізики (усуває мікросіпання)
+        guard !isGameOver, !isPlayerFalling else { return }
+        player.position.y = cameraNode.position.y + playerCameraOffsetY
         if !player.isJumping {
             let currentWallX = player.isOnLeftWall ? playerLeftX : playerRightX
             player.position.x = currentWallX
@@ -2691,64 +2921,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
-    /// Акуратна система мікро-частинок при підборі серця (розміщується за персонажем, без перекриття і без тексту)
+    /// Акуратна система мікро-частинок при підборі серця з пулу (без виділення пам'яті під час бігу)
     private func playHeartPickupEffect(at position: CGPoint) {
-        let container = SKNode()
-        container.position = position
-        container.zPosition = 4.8 // Позаду персонажа (zPosition = 5.0), щоб не закривати огляд
-        
-        // 1. Акуратні міні-сердечка (~10 пт), що м'яко здіймаються вгору
-        let heartEmitter = SKEmitterNode()
-        heartEmitter.particleTexture = SKTexture(imageNamed: currentTheme.heartTextureName)
-        heartEmitter.particleBirthRate = 200
-        heartEmitter.numParticlesToEmit = 7
-        heartEmitter.particleLifetime = 0.38
-        heartEmitter.particleLifetimeRange = 0.10
-        heartEmitter.particleSpeed = 65.0
-        heartEmitter.particleSpeedRange = 25.0
-        heartEmitter.emissionAngle = .pi / 2.0 // Вгору
-        heartEmitter.emissionAngleRange = .pi * 0.65
-        heartEmitter.yAcceleration = 25.0
-        heartEmitter.particleAlpha = 0.95
-        heartEmitter.particleAlphaSpeed = -2.2
-        heartEmitter.particleScale = 0.08
-        heartEmitter.particleScaleRange = 0.025
-        heartEmitter.particleScaleSpeed = -0.12
-        heartEmitter.particleRotation = 0
-        heartEmitter.particleRotationSpeed = .pi * 1.2
-        heartEmitter.particleRotationRange = .pi
-        heartEmitter.particleBlendMode = .alpha
-        container.addChild(heartEmitter)
-        
-        // 2. Дрібні смарагдові іскри відновлення здоров'я
-        let healEmitter = SKEmitterNode()
-        healEmitter.particleTexture = GameScene.sparkTexture
-        healEmitter.particleBirthRate = 250
-        healEmitter.numParticlesToEmit = 10
-        healEmitter.particleLifetime = 0.35
-        healEmitter.particleLifetimeRange = 0.08
-        healEmitter.particleSpeed = 70.0
-        healEmitter.particleSpeedRange = 25.0
-        healEmitter.emissionAngle = .pi / 2.0
-        healEmitter.emissionAngleRange = .pi * 0.85
-        healEmitter.yAcceleration = 30.0
-        healEmitter.particleAlpha = 0.9
-        healEmitter.particleAlphaSpeed = -2.4
-        healEmitter.particleScale = 0.16
-        healEmitter.particleScaleRange = 0.05
-        healEmitter.particleScaleSpeed = -0.25
-        healEmitter.particleColor = SKColor(red: 0.35, green: 0.98, blue: 0.55, alpha: 1.0)
-        healEmitter.particleColorBlendFactor = 1.0
-        healEmitter.particleBlendMode = .add
-        container.addChild(healEmitter)
-        
-        addChild(container)
-        
-        // Автоматичне видалення контейнера після завершення життя частинок
-        container.run(SKAction.sequence([
-            SKAction.wait(forDuration: 0.50),
-            SKAction.removeFromParent()
-        ]))
+        if let node = heartPickupPool.first(where: { !$0.inUse }) {
+            node.trigger(at: position, duration: 0.45)
+        } else if let oldest = heartPickupPool.first {
+            oldest.trigger(at: position, duration: 0.45)
+        }
     }
     
     // MARK: - Lives & Mob Interaction
@@ -2832,62 +3011,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         playCoinPickupEffect(at: coin.position)
     }
     
-    /// Акуратна система мікро-частинок при підборі монети (розміщується за персонажем, без перекриття і без тексту)
+    /// Акуратна система мікро-частинок при підборі монети з пулу (без створення нод на льоту)
     private func playCoinPickupEffect(at position: CGPoint) {
-        let container = SKNode()
-        container.position = position
-        container.zPosition = 4.8 // Позаду персонажа (zPosition = 5.0), щоб не закривати огляд
-        
-        // 1. Акуратний радіальний спалах міні-зірочок (~9-10 пт)
-        let starEmitter = SKEmitterNode()
-        starEmitter.particleTexture = GameScene.starParticleTexture
-        starEmitter.particleBirthRate = 200
-        starEmitter.numParticlesToEmit = 8
-        starEmitter.particleLifetime = 0.28
-        starEmitter.particleLifetimeRange = 0.08
-        starEmitter.particleSpeed = 65.0
-        starEmitter.particleSpeedRange = 25.0
-        starEmitter.emissionAngle = 0
-        starEmitter.emissionAngleRange = .pi * 2.0 // Повне коло 360°
-        starEmitter.particleAlpha = 0.95
-        starEmitter.particleAlphaSpeed = -2.6
-        starEmitter.particleScale = 0.055
-        starEmitter.particleScaleRange = 0.02
-        starEmitter.particleScaleSpeed = -0.09
-        starEmitter.particleRotation = 0
-        starEmitter.particleRotationSpeed = .pi * 3.0
-        starEmitter.particleRotationRange = .pi * 2.0
-        starEmitter.particleBlendMode = .alpha
-        container.addChild(starEmitter)
-        
-        // 2. Дрібні золотисто-жовті іскри (~3-4 пт)
-        let sparkEmitter = SKEmitterNode()
-        sparkEmitter.particleTexture = GameScene.sparkTexture
-        sparkEmitter.particleBirthRate = 250
-        sparkEmitter.numParticlesToEmit = 10
-        sparkEmitter.particleLifetime = 0.25
-        sparkEmitter.particleLifetimeRange = 0.06
-        sparkEmitter.particleSpeed = 75.0
-        sparkEmitter.particleSpeedRange = 25.0
-        sparkEmitter.emissionAngle = 0
-        sparkEmitter.emissionAngleRange = .pi * 2.0
-        sparkEmitter.particleAlpha = 0.95
-        sparkEmitter.particleAlphaSpeed = -3.0
-        sparkEmitter.particleScale = 0.16
-        sparkEmitter.particleScaleRange = 0.05
-        sparkEmitter.particleScaleSpeed = -0.25
-        sparkEmitter.particleColor = SKColor(red: 1.0, green: 0.88, blue: 0.30, alpha: 1.0)
-        sparkEmitter.particleColorBlendFactor = 1.0
-        sparkEmitter.particleBlendMode = .add
-        container.addChild(sparkEmitter)
-        
-        addChild(container)
-        
-        // Автоматичне видалення контейнера після завершення життя частинок
-        container.run(SKAction.sequence([
-            SKAction.wait(forDuration: 0.45),
-            SKAction.removeFromParent()
-        ]))
+        if let node = coinPickupPool.first(where: { !$0.inUse }) {
+            node.trigger(at: position, duration: 0.35)
+        } else if let oldest = coinPickupPool.first {
+            oldest.trigger(at: position, duration: 0.35)
+        }
     }
     
     // MARK: - Game Over & Abyss Fall
