@@ -18,7 +18,7 @@ final class FireArrowNode: SKSpriteNode {
         static let frameCount: Int = 8
         static let framePrefix: String = "fire_arrow_"
         static let timePerFrame: TimeInterval = 0.045
-        static let defaultSpeed: CGFloat = 260.0
+        static let defaultSpeed: CGFloat = 300.0
     }
     
     // MARK: - Properties

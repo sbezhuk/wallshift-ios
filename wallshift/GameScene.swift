@@ -1525,7 +1525,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             rootNode.zPosition = -6
             rootNode.alpha = CGFloat.random(in: 0.82...0.92)
             
-            let offset = (rootHeight / 2.0) - 8.0
+            let offset = (rootHeight / 2.0) - 14.0
             if onLeftWall {
                 rootNode.zRotation = -.pi / 2.0
                 rootNode.xScale = -1.0
@@ -1549,7 +1549,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             landmark.zPosition = -5
             landmark.alpha = CGFloat.random(in: 0.88...0.96)
             
-            let offset = (landmarkHeight / 2.0) - 4.0
+            let offset = (landmarkHeight / 2.0) - 12.0
             if onLeftWall {
                 landmark.zRotation = -.pi / 2.0
                 landmark.xScale = -1.0
@@ -1572,7 +1572,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         tree.zPosition = -5
         tree.alpha = CGFloat.random(in: 0.84...0.94)
         
-        let rootOffset = (treeSize.height / 2.0) - 14.0
+        let rootOffset = (treeSize.height / 2.0) - 16.0
         if onLeftWall {
             // Стовбур біля лівої скелі, крона розростається праворуч углиб каньйону
             tree.zRotation = -.pi / 2.0
@@ -1634,18 +1634,18 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             let w = min(baseH * aspect, 46.0)
             let h = baseH
             sprite = SKSpriteNode(texture: tex, size: CGSize(width: w, height: h))
-            protrusionOffset = (h / 2.0) - 3.0
+            protrusionOffset = (h / 2.0) - 2.5
         } else if roll < 48 {
             // Осінній кущик (Bush 01): горизонтальний ріст зі скелі в коридор
             let s = CGFloat.random(in: 24...28)
             sprite = SKSpriteNode(texture: bushTexture, size: CGSize(width: s, height: s))
-            protrusionOffset = (s / 2.0) - 3.0
+            protrusionOffset = (s / 2.0) - 2.5
         } else if roll < 82 {
             // Скельний виступ / камінь (Stone 01 / Stone 02)
             let tex = stoneTextures[Int.random(in: 0..<stoneTextures.count)]
             let s = CGFloat.random(in: 22...26)
             sprite = SKSpriteNode(texture: tex, size: CGSize(width: s, height: s))
-            protrusionOffset = (s / 2.0) - 3.0
+            protrusionOffset = (s / 2.0) - 2.5
         } else {
             // Пеньок (Stump): плоска основа у скелі
             let w = CGFloat.random(in: 26...30)
@@ -1995,7 +1995,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 pointAY: candidateY,
                 pointBY: finalEndY,
                 patrolSpeed: patrolSpeed,
-                customTextures: activeTextures
+                customTextures: activeTextures,
+                projectileType: currentTheme.projectileType
             )
             
             if mobType == .shooter {
@@ -2332,29 +2333,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 }
             }
             
-            // Перевірка та активація стрільби мобів-стрільців при появі гравця на їхній стіні
-            // Оцінка безпеки зони ухилення: гравець повинен мати суцільну протилежну стіну для приземлення
-            let oppWallIsSafeForJump = isWallRangeSolid(
-                onLeftWall: !player.isOnLeftWall,
-                minY: player.position.y + 10.0,
-                maxY: player.position.y + 160.0,
-                safetyMargin: 20.0
-            )
-            let ownWallAheadIsSafe = isWallRangeSolid(
-                onLeftWall: player.isOnLeftWall,
-                minY: player.position.y,
-                maxY: player.position.y + 70.0,
-                safetyMargin: 15.0
-            )
-            let canSafelyDodge = oppWallIsSafeForJump && ownWallAheadIsSafe
-            
+            // Оновлення та активація стрільби ворожих мобів-стрільців при наближенні гравця
             for mob in trackMobNodes {
                 mob.updateShooting(
                     playerPosition: player.position,
                     playerIsOnLeftWall: player.isOnLeftWall,
                     playerIsJumping: player.isJumping,
-                    currentTime: currentTime,
-                    isDodgeSafe: canSafelyDodge
+                    currentTime: currentTime
                 )
             }
             

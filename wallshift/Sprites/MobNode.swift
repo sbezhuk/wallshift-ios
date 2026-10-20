@@ -40,9 +40,11 @@ final class MobNode: SKSpriteNode {
         static let shooterPrefix: String = "shooter_walk_"
         
         // Параметри стрільби
-        static let shotCooldown: TimeInterval = 2.4
-        static let detectionRangeY: CGFloat = 360.0
-        static let telegraphDuration: TimeInterval = 0.55
+        static let shotCooldown: TimeInterval = 1.3
+        static let detectionRangeY: CGFloat = 580.0
+        static let telegraphDuration: TimeInterval = 0.38
+        static let volleyDelay: TimeInterval = 0.44
+        static let leadAheadY: CGFloat = 180.0
     }
     
     // MARK: - Properties
@@ -51,10 +53,13 @@ final class MobNode: SKSpriteNode {
     let pointAY: CGFloat
     let pointBY: CGFloat
     let patrolSpeed: CGFloat
+    let projectileType: ProjectileType
     
     private(set) var isMovingUp: Bool = true
     private(set) var isAttacking: Bool = false
     private var lastShotTime: TimeInterval = 0
+    private var lastPlayerPosition: CGPoint = .zero
+    private var lastPlayerIsOnLeftWall: Bool = true
     
     /// Колбек для створення та додавання вогняної стріли у сцену
     var onShootArrow: ((_ startPosition: CGPoint, _ targetPosition: CGPoint) -> Void)?
@@ -94,13 +99,15 @@ final class MobNode: SKSpriteNode {
         pointAY: CGFloat,
         pointBY: CGFloat,
         patrolSpeed: CGFloat,
-        customTextures: [SKTexture]? = nil
+        customTextures: [SKTexture]? = nil,
+        projectileType: ProjectileType = .fire
     ) {
         self.mobType = mobType
         self.isOnLeftWall = isOnLeftWall
         self.pointAY = min(pointAY, pointBY)
         self.pointBY = max(pointAY, pointBY)
         self.patrolSpeed = patrolSpeed
+        self.projectileType = projectileType
         
         // Вибираємо відповідний набір спрайтів: кастомний за темою або стандартний
         let textures: [SKTexture]
@@ -194,7 +201,7 @@ final class MobNode: SKSpriteNode {
     }
     
     // MARK: - Shooting Logic
-    /// Оновлення перевірки присутності гравця на тій самій стіні та ініціація пострілу
+    /// Оновлення перевірки присутності гравця та ініціація серії пострілів
     func updateShooting(
         playerPosition: CGPoint,
         playerIsOnLeftWall: Bool,
@@ -202,70 +209,113 @@ final class MobNode: SKSpriteNode {
         currentTime: TimeInterval,
         isDodgeSafe: Bool = true
     ) {
+        // Оновлюємо найсвіжіші координати цілі щокадру
+        self.lastPlayerPosition = playerPosition
+        self.lastPlayerIsOnLeftWall = playerIsOnLeftWall
+        
         guard mobType == .shooter, !isAttacking else { return }
         
-        // 1. Гравець повинен бігти по тій самій стіні, де ходить моб
-        guard playerIsOnLeftWall == self.isOnLeftWall else { return }
-        
-        // 2. Гравець не в польоті під час стрибка
-        guard !playerIsJumping else { return }
-        
-        // 3. Чесність ухилення: протилежна стіна ОБОВ'ЯЗКОВО безпечна для стрибка (без прірв)
-        guard isDodgeSafe else { return }
-        
-        // 4. Гравець знаходиться нижче моба (наближається) у зоні видимості/досяжності
+        // 1. Гравець повинен знаходитися в зоні досяжності каньйону (наближається знизу або біжить поруч)
         let verticalDistance = position.y - playerPosition.y
-        guard verticalDistance > 35.0 && verticalDistance <= Constants.detectionRangeY else { return }
+        guard verticalDistance > -90.0 && verticalDistance <= Constants.detectionRangeY else { return }
         
-        // 5. Перевірка кулдауну між пострілами
+        // 2. Перевірка кулдауну між серіями пострілів
         guard currentTime - lastShotTime >= Constants.shotCooldown else { return }
         
-        // Запуск підготовки та пострілу стріли
-        triggerAttack(towards: playerPosition, currentTime: currentTime)
+        // 3. Запуск серії пострілів
+        triggerAttackVolley(currentTime: currentTime)
     }
     
-    /// Підготовка та здійснення пострілу з виразним візуальним телеграфом для комфортного ухилення
-    private func triggerAttack(towards targetPosition: CGPoint, currentTime: TimeInterval) {
+    /// Підготовка та здійснення серії пострілів (черги) з упередженням на випередження
+    private func triggerAttackVolley(currentTime: TimeInterval) {
         guard !isAttacking else { return }
         isAttacking = true
         lastShotTime = currentTime
         
-        // Сповільнюємо рух патрулювання на час прицілювання
-        action(forKey: "patrolMovement")?.speed = 0.2
+        // Сповільнюємо рух патрулювання на час атаки
+        action(forKey: "patrolMovement")?.speed = 0.25
         
-        // Візуальний телеграф: пульсуючий спалах прицілювання
-        let chargeGlow = SKShapeNode(circleOfRadius: 20.0)
-        chargeGlow.fillColor = SKColor(red: 1.0, green: 0.35, blue: 0.05, alpha: 0.8)
-        chargeGlow.strokeColor = SKColor(red: 1.0, green: 0.90, blue: 0.2, alpha: 1.0)
+        // Кількість пострілів у черзі (2-3 постріли)
+        let totalShots = Int.random(in: 2...3)
+        var actions: [SKAction] = []
+        
+        for shotIndex in 0..<totalShots {
+            let prepDuration: TimeInterval = (shotIndex == 0) ? Constants.telegraphDuration : 0.28
+            
+            // Візуальний телеграф: пульсуючий спалах прицілювання
+            let chargeAction = SKAction.run { [weak self] in
+                self?.showChargeGlow(scale: shotIndex == 0 ? 1.5 : 1.3)
+            }
+            actions.append(chargeAction)
+            actions.append(SKAction.wait(forDuration: prepDuration))
+            
+            // Сам випуск снаряду зі свіжими координатами цілі
+            let fireAction = SKAction.run { [weak self] in
+                guard let self = self else { return }
+                self.fireSingleProjectile()
+            }
+            actions.append(fireAction)
+            
+            // Інтервал між пострілами всередині черги
+            if shotIndex < totalShots - 1 {
+                actions.append(SKAction.wait(forDuration: Constants.volleyDelay))
+            }
+        }
+        
+        // Завершення серії: відновлюємо нормальний темп ходьби
+        let finishAction = SKAction.run { [weak self] in
+            guard let self = self else { return }
+            self.action(forKey: "patrolMovement")?.speed = 1.0
+            self.isAttacking = false
+        }
+        actions.append(finishAction)
+        
+        run(SKAction.sequence(actions), withKey: "shootingSequence")
+    }
+    
+    /// Створення та випуск окремого снаряду з динамічним упередженням по гравцю
+    private func fireSingleProjectile() {
+        guard parent != nil else { return }
+        
+        let shootOffsetY: CGFloat = -20.0
+        let spawnPoint = CGPoint(x: self.position.x, y: self.position.y + shootOffsetY)
+        
+        let isSameWall = (self.lastPlayerIsOnLeftWall == self.isOnLeftWall)
+        let aimTarget: CGPoint
+        
+        if isSameWall {
+            // На тій самій стіні: стріла летить уздовж стіни вниз назустріч гравцю
+            aimTarget = CGPoint(x: self.position.x, y: self.position.y - 450.0)
+        } else {
+            // На протилежній стіні: стріляємо НАПЕРЕД (на випередження руху гравця вгору)
+            let leadY = Constants.leadAheadY
+            let targetY = max(self.lastPlayerPosition.y + leadY, self.position.y - 60.0)
+            aimTarget = CGPoint(x: self.lastPlayerPosition.x, y: targetY)
+        }
+        
+        self.onShootArrow?(spawnPoint, aimTarget)
+    }
+    
+    /// Візуальний пульсуючий спалах прицілювання відповідно до типу магії снаряда
+    private func showChargeGlow(scale: CGFloat) {
+        let chargeGlow = SKShapeNode(circleOfRadius: 22.0)
+        if projectileType == .water {
+            chargeGlow.fillColor = SKColor(red: 0.15, green: 0.75, blue: 1.0, alpha: 0.85)
+            chargeGlow.strokeColor = SKColor(red: 0.60, green: 0.90, blue: 1.0, alpha: 1.0)
+        } else {
+            chargeGlow.fillColor = SKColor(red: 1.0, green: 0.35, blue: 0.05, alpha: 0.85)
+            chargeGlow.strokeColor = SKColor(red: 1.0, green: 0.90, blue: 0.20, alpha: 1.0)
+        }
         chargeGlow.lineWidth = 2.5
         chargeGlow.blendMode = .add
         chargeGlow.zPosition = 6.0
         addChild(chargeGlow)
         
-        let pulse1 = SKAction.scale(to: 1.45, duration: 0.22)
-        let pulse2 = SKAction.scale(to: 1.0, duration: 0.15)
-        let pulse3 = SKAction.scale(to: 1.6, duration: 0.18)
-        let fadeOut = SKAction.fadeOut(withDuration: 0.06)
+        let pulse1 = SKAction.scale(to: scale, duration: 0.14)
+        let pulse2 = SKAction.scale(to: 1.0, duration: 0.10)
+        let pulse3 = SKAction.scale(to: scale * 1.1, duration: 0.10)
+        let fadeOut = SKAction.fadeOut(withDuration: 0.05)
         let remove = SKAction.removeFromParent()
         chargeGlow.run(SKAction.sequence([pulse1, pulse2, pulse3, fadeOut, remove]))
-        
-        // Достатній час затримки (~0.55 с), щоб гравець встиг спокійно оцінити ситуацію та стрибнути
-        let waitToShoot = SKAction.wait(forDuration: Constants.telegraphDuration)
-        let shootAction = SKAction.run { [weak self] in
-            guard let self = self else { return }
-            
-            // Випускаємо стрілу вниз вздовж стіни у бік гравця
-            let shootOffsetY: CGFloat = -26.0
-            let spawnPoint = CGPoint(x: self.position.x, y: self.position.y + shootOffsetY)
-            let aimTarget = CGPoint(x: self.position.x, y: self.position.y - 400.0)
-            
-            self.onShootArrow?(spawnPoint, aimTarget)
-            
-            // Відновлюємо нормальний темп ходьби
-            self.action(forKey: "patrolMovement")?.speed = 1.0
-            self.isAttacking = false
-        }
-        
-        run(SKAction.sequence([waitToShoot, shootAction]), withKey: "shootingSequence")
     }
 }
