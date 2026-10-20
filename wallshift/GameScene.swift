@@ -42,8 +42,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // Кількість точок вертикального підйому на 1 очко
         static let distancePerScorePoint: CGFloat = 25.0
         
-        // Тривалість стрибка між стінами (в секундах)
-        static let jumpDuration: TimeInterval = 0.30
+        // Базова та мінімальна тривалість стрибка між стінами (в секундах)
+        static let baseJumpDuration: TimeInterval = 0.28
+        static let minJumpDuration: TimeInterval = 0.19
         
         // Колірна гамма підкладки фону (теплий осінній тон)
         static let backgroundColor = SKColor(red: 0.18, green: 0.12, blue: 0.09, alpha: 1.0)
@@ -53,10 +54,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var backgroundTexture: SKTexture {
         let name = currentTheme.backgroundTextureName
         let tex = SKTexture(imageNamed: name)
+        tex.filteringMode = .linear
         if tex.size().width > 0 {
             return tex
         }
-        return SKTexture(imageNamed: "backround")
+        let fallback = SKTexture(imageNamed: "backround")
+        fallback.filteringMode = .linear
+        return fallback
     }
     
     // MARK: - Active Theme & Textures
@@ -153,6 +157,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         return player.isJumping
     }
     
+    // MARK: - Input Buffering (Буферизація тапу для чуйного стрибка)
+    private var hasBufferedJump: Bool = false
+    private var bufferedJumpTimestamp: TimeInterval = 0
+    private let jumpBufferWindow: TimeInterval = 0.16
+    
     // MARK: - Game State
     enum GameState {
         case menu
@@ -173,6 +182,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var currentShopIndex: Int = 0
     private var backgroundNode: SKSpriteNode?
     private var backgroundOverlayNode: SKSpriteNode?
+    private var backgroundTopExtensionNode: SKSpriteNode?
+    private var backgroundBottomExtensionNode: SKSpriteNode?
+    
+    /// Масштаб фонового зображення (зменшено на ~18% від колишнього 1.05 Aspect Fill, щоб пікселі були щільними та чіткими)
+    private let backgroundScaleMultiplier: CGFloat = 0.86
     
     /// Прапорець закінчення гри
     private(set) var isGameOver: Bool = false
@@ -221,6 +235,16 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let s = CGFloat(max(0, score))
         let acceleration = 340.0 * (1.0 - exp(-s / 450.0)) + (s * 0.035)
         return min(645.0, 300.0 + acceleration)
+    }
+    
+    /// Динамічна тривалість стрибка: плавно адаптується до темпу гри.
+    /// На старті стрибок комфортний (0.28с), на максимальній швидкості — швидкий і чуйний (0.19с),
+    /// що усуває відчуття заторможеності на складних ділянках та вузьких платформах.
+    private var currentJumpDuration: TimeInterval {
+        guard gameState == .playing else { return Config.baseJumpDuration }
+        let speedProgress = (currentUpwardSpeed - 300.0) / (645.0 - 300.0)
+        let clamped = max(0.0, min(1.0, speedProgress))
+        return Config.baseJumpDuration - (Double(clamped) * (Config.baseJumpDuration - Config.minJumpDuration))
     }
     
     /// Розміри розриву прірв: плавний і природний розподіл без сходинкових стрибків.
@@ -536,8 +560,12 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let textureSize = backgroundTexture.size()
         guard textureSize.width > 0, textureSize.height > 0 else { return }
         
-        // Масштабуємо фон так, щоб він гарантовано покривав увесь екран (Aspect Fill)
-        let scale = max(size.width / textureSize.width, size.height / textureSize.height) * 1.05
+        backgroundTexture.filteringMode = .linear
+        
+        // Масштабуємо фон: базовий Aspect Fill масштабується з коефіцієнтом backgroundScaleMultiplier (0.86),
+        // завдяки чому пікселі стають значно щільнішими, деталі фону виглядають чітко і без пікселізації
+        let baseScale = max(size.width / textureSize.width, size.height / textureSize.height)
+        let scale = baseScale * backgroundScaleMultiplier
         let bgSize = CGSize(width: textureSize.width * scale, height: textureSize.height * scale)
         
         let background = SKSpriteNode(texture: backgroundTexture, size: bgSize)
@@ -546,10 +574,32 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         cameraNode.addChild(background)
         self.backgroundNode = background
         
-        // Атмосферний кольоровий оверлей теми (змінюється відповідно до активного персонажа)
+        // Верхнє безшовне розширення атмосфери теми (перекриває безпечну зону та верх екрана)
+        let topH = max(60.0, (size.height - bgSize.height) / 2.0 + 80.0)
+        let topExt = SKSpriteNode(
+            color: currentTheme.backgroundTopColor,
+            size: CGSize(width: max(size.width, bgSize.width) + 40.0, height: topH)
+        )
+        topExt.zPosition = -10
+        topExt.position = CGPoint(x: 0, y: (bgSize.height / 2.0) + (topH / 2.0) - 2.0)
+        cameraNode.addChild(topExt)
+        self.backgroundTopExtensionNode = topExt
+        
+        // Нижнє безшовне розширення атмосфери теми (перекриває нижню зону огляду)
+        let botH = max(60.0, (size.height - bgSize.height) / 2.0 + 80.0)
+        let botExt = SKSpriteNode(
+            color: currentTheme.backgroundBottomColor,
+            size: CGSize(width: max(size.width, bgSize.width) + 40.0, height: botH)
+        )
+        botExt.zPosition = -10
+        botExt.position = CGPoint(x: 0, y: -(bgSize.height / 2.0) - (botH / 2.0) + 2.0)
+        cameraNode.addChild(botExt)
+        self.backgroundBottomExtensionNode = botExt
+        
+        // Атмосферний кольоровий оверлей теми (покриває весь екран із запасом)
         let overlay = SKSpriteNode(
             color: currentTheme.backgroundOverlayColor,
-            size: CGSize(width: bgSize.width, height: bgSize.height)
+            size: CGSize(width: max(size.width, bgSize.width) + 40.0, height: size.height + 160.0)
         )
         overlay.alpha = currentTheme.backgroundOverlayAlpha
         overlay.zPosition = -8
@@ -587,7 +637,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let topY: CGFloat = (size.height / 2.0) - 58.0
         
         for i in 0..<GameScene.maxLives {
-            let heart = SKSpriteNode(imageNamed: "life_hearth")
+            let heart = SKSpriteNode(imageNamed: currentTheme.heartTextureName)
             heart.size = heartSize
             heart.position = CGPoint(x: startX + CGFloat(i) * spacing, y: topY)
             heart.zPosition = 100
@@ -705,16 +755,18 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         let bannerW = min(310.0, size.width - 50.0)
         let bannerH = bannerW * (457.0 / 1139.0)
-        let banner = SKSpriteNode(imageNamed: "gui_banner_orange")
+        let banner = SKSpriteNode(imageNamed: currentTheme.guiBannerName)
+        banner.name = "menuBanner"
         banner.size = CGSize(width: bannerW, height: bannerH)
         banner.position = .zero
         banner.zPosition = 1
         titleContainer.addChild(banner)
         
         let shadowLabel = SKLabelNode(fontNamed: AppFont.name)
+        shadowLabel.name = "menuBannerShadow"
         shadowLabel.text = "WALLSHIFT"
         shadowLabel.fontSize = min(46.0, size.width * 0.115)
-        shadowLabel.fontColor = SKColor(red: 0.12, green: 0.05, blue: 0.02, alpha: 0.95)
+        shadowLabel.fontColor = currentTheme.guiBannerShadowColor
         shadowLabel.position = CGPoint(x: 1.5, y: -bannerH * 0.08)
         shadowLabel.zPosition = 2
         titleContainer.addChild(shadowLabel)
@@ -736,7 +788,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // 2. Картка статистики (Best Score & Coins) із GUI Bundle
         let cardW: CGFloat = min(280.0, size.width - 70.0)
         let cardH: CGFloat = 54.0
-        let card = SKSpriteNode(imageNamed: "gui_bar_orange")
+        let card = SKSpriteNode(imageNamed: currentTheme.guiStatsBarName)
         card.name = "menuCard"
         card.size = CGSize(width: cardW, height: cardH)
         card.position = CGPoint(x: 0, y: size.height * 0.08)
@@ -750,9 +802,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         card.addChild(starIcon)
         
         let bestScoreText = SKLabelNode(fontNamed: AppFont.name)
+        bestScoreText.name = "menuBestScoreText"
         bestScoreText.text = "BEST: \(bestScore.formattedWithSeparator)"
         bestScoreText.fontSize = 16.0
-        bestScoreText.fontColor = SKColor(red: 0.22, green: 0.09, blue: 0.03, alpha: 1.0)
+        bestScoreText.fontColor = currentTheme.guiStatsTextColor
         bestScoreText.horizontalAlignmentMode = .left
         bestScoreText.verticalAlignmentMode = .center
         bestScoreText.position = CGPoint(x: -cardW * 0.26, y: 0.0)
@@ -766,9 +819,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         card.addChild(coinIcon)
         
         let coinsText = SKLabelNode(fontNamed: AppFont.name)
+        coinsText.name = "menuCoinsText"
         coinsText.text = totalCoins.formattedWithSeparator
         coinsText.fontSize = 16.0
-        coinsText.fontColor = SKColor(red: 0.22, green: 0.09, blue: 0.03, alpha: 1.0)
+        coinsText.fontColor = currentTheme.guiStatsTextColor
         coinsText.horizontalAlignmentMode = .left
         coinsText.verticalAlignmentMode = .center
         coinsText.position = CGPoint(x: cardW * 0.21, y: 0.0)
@@ -779,7 +833,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // 3. Кнопка START GAME із GUI Bundle
         let btnW: CGFloat = min(250.0, size.width - 80.0)
         let btnH: CGFloat = 66.0
-        let playBtn = SKSpriteNode(imageNamed: "gui_btn_large_orange")
+        let playBtn = SKSpriteNode(imageNamed: currentTheme.guiPrimaryBtnName)
         playBtn.name = "menuPlayButton"
         playBtn.size = CGSize(width: btnW, height: btnH)
         playBtn.position = CGPoint(x: 0, y: -size.height * 0.045)
@@ -813,7 +867,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // 4. Кнопка МАРКЕТ із Basic_GUI_Bundle
         let shopBtnW: CGFloat = min(220.0, size.width - 90.0)
         let shopBtnH: CGFloat = 56.0
-        let shopBtn = SKSpriteNode(imageNamed: "gui_btn_small_blue")
+        let shopBtn = SKSpriteNode(imageNamed: currentTheme.guiSecondaryBtnName)
         shopBtn.name = "menuShopButton"
         shopBtn.size = CGSize(width: shopBtnW, height: shopBtnH)
         shopBtn.position = CGPoint(x: 0, y: -size.height * 0.165)
@@ -839,7 +893,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         shopBtn.addChild(shopLabel)
         
         // 5. Кнопка звуку із GUI Bundle (гучність вкл/викл)
-        let soundBtn = SKSpriteNode(imageNamed: "gui_btn_circle_orange")
+        let soundBtn = SKSpriteNode(imageNamed: currentTheme.guiCircleBtnName)
         soundBtn.name = "menuSoundButton"
         soundBtn.size = CGSize(width: 48.0, height: 48.0)
         soundBtn.position = CGPoint(
@@ -985,13 +1039,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // 3. Заголовок "MARKET"
         let bannerW = min(230.0, cardW - 40.0)
         let bannerH = bannerW * (457.0 / 1139.0)
-        let banner = SKSpriteNode(imageNamed: "gui_banner_orange")
+        let banner = SKSpriteNode(imageNamed: currentTheme.guiBannerName)
+        banner.name = "shopBanner"
         banner.size = CGSize(width: bannerW, height: bannerH)
         banner.position = CGPoint(x: 0, y: cardH * 0.44)
         banner.zPosition = 5
         card.addChild(banner)
         
         let titleLabel = SKLabelNode(fontNamed: AppFont.name)
+        titleLabel.name = "shopTitleLabel"
         titleLabel.text = "MARKET"
         titleLabel.fontSize = 25.0
         titleLabel.fontColor = .white
@@ -1001,7 +1057,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         banner.addChild(titleLabel)
         
         // 4. Кнопка закриття [X]
-        let closeBtn = SKSpriteNode(imageNamed: "gui_btn_circle_orange")
+        let closeBtn = SKSpriteNode(imageNamed: currentTheme.guiCircleBtnName)
         closeBtn.name = "shopCloseButton"
         closeBtn.size = CGSize(width: 40.0, height: 40.0)
         closeBtn.position = CGPoint(x: (cardW / 2.0) - 26.0, y: (cardH / 2.0) - 26.0)
@@ -1043,7 +1099,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         balanceNode.addChild(balanceLabel)
         
         // 6. Стрілки перемикання ліворуч / праворуч
-        let arrowLeft = SKSpriteNode(imageNamed: "gui_btn_circle_orange")
+        let arrowLeft = SKSpriteNode(imageNamed: currentTheme.guiCircleBtnName)
         arrowLeft.name = "shopPrevButton"
         arrowLeft.size = CGSize(width: 44.0, height: 44.0)
         arrowLeft.position = CGPoint(x: -cardW * 0.40, y: cardH * 0.05)
@@ -1057,7 +1113,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         arrowLeftIcon.zPosition = 2
         arrowLeft.addChild(arrowLeftIcon)
         
-        let arrowRight = SKSpriteNode(imageNamed: "gui_btn_circle_orange")
+        let arrowRight = SKSpriteNode(imageNamed: currentTheme.guiCircleBtnName)
+        arrowRight.name = "shopNextButton"
         arrowRight.name = "shopNextButton"
         arrowRight.size = CGSize(width: 44.0, height: 44.0)
         arrowRight.position = CGPoint(x: cardW * 0.40, y: cardH * 0.05)
@@ -1077,13 +1134,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         contentContainer.zPosition = 5
         card.addChild(contentContainer)
         
+        // Рендеримо картку ДО застосування початкового масштабу появи,
+        // щоб розміри та позиції не спотворювалися масштабуванням картки
+        renderCurrentShopCard()
+        
         // Анімація появи
         container.alpha = 0.0
         card.setScale(0.85)
         container.run(SKAction.fadeIn(withDuration: 0.20))
         card.run(SKAction.scale(to: 1.0, duration: 0.20))
-        
-        renderCurrentShopCard()
     }
     
     /// Рендеринг поточного персонажа/теми у вікні магазину
@@ -1111,10 +1170,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let isSelected = (theme.id == ThemeManager.shared.selectedThemeID)
         let canAfford = ThemeManager.shared.canAfford(theme)
         
-        let cardH = (card as? SKSpriteNode)?.size.height ?? 490.0
+        let cardSprite = card as? SKSpriteNode
+        let scaleY = abs(cardSprite?.yScale ?? 1.0)
+        let currentScaleY = scaleY > 0.001 ? scaleY : 1.0
+        let cardH = (cardSprite?.size.height ?? 490.0) / currentScaleY
         
         // А. П'єдестал та аватар персонажа
-        let avatarBg = SKSpriteNode(imageNamed: "gui_card_orange")
+        let avatarBg = SKSpriteNode(imageNamed: theme.guiCardFrameName)
         avatarBg.size = CGSize(width: 136.0, height: 136.0)
         avatarBg.position = CGPoint(x: 0, y: cardH * 0.05)
         avatarBg.zPosition = 1
@@ -1150,12 +1212,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             avatarBg.addChild(lock)
         }
         
-        // Б. Назва теми
+        // Б. Назва теми (позиціонується з безпечним відступом під п'єдесталом аватара)
+        let avatarBottomY = avatarBg.position.y - (avatarBg.size.height / 2.0)
         let titleLabel = SKLabelNode(fontNamed: AppFont.name)
         titleLabel.text = theme.name
         titleLabel.fontSize = 18.0
         titleLabel.fontColor = .white
-        titleLabel.position = CGPoint(x: 0, y: -cardH * 0.14)
+        titleLabel.position = CGPoint(x: 0, y: avatarBottomY - 24.0)
         titleLabel.zPosition = 2
         content.addChild(titleLabel)
         
@@ -1164,13 +1227,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         subtitleLabel.text = theme.subtitle
         subtitleLabel.fontSize = 13.0
         subtitleLabel.fontColor = SKColor(red: 0.95, green: 0.90, blue: 0.80, alpha: 0.90)
-        subtitleLabel.position = CGPoint(x: 0, y: -cardH * 0.20)
+        subtitleLabel.position = CGPoint(x: 0, y: titleLabel.position.y - 22.0)
         subtitleLabel.zPosition = 2
         content.addChild(subtitleLabel)
         
         // Г. Індикатор пагінації (точки 1 2 3)
         let dotsContainer = SKNode()
-        dotsContainer.position = CGPoint(x: 0, y: -cardH * 0.26)
+        dotsContainer.position = CGPoint(x: 0, y: subtitleLabel.position.y - 24.0)
         dotsContainer.zPosition = 2
         content.addChild(dotsContainer)
         
@@ -1178,7 +1241,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let totalDotsW = CGFloat(themes.count - 1) * dotSpacing
         for i in 0..<themes.count {
             let dot = SKShapeNode(circleOfRadius: (i == currentShopIndex) ? 4.5 : 3.0)
-            dot.fillColor = (i == currentShopIndex) ? SKColor(red: 1.0, green: 0.85, blue: 0.2, alpha: 1.0) : SKColor.white.withAlphaComponent(0.35)
+            dot.fillColor = (i == currentShopIndex) ? theme.guiAccentColor : SKColor.white.withAlphaComponent(0.35)
             dot.strokeColor = .clear
             dot.position = CGPoint(x: -totalDotsW / 2.0 + CGFloat(i) * dotSpacing, y: 0)
             dotsContainer.addChild(dot)
@@ -1188,27 +1251,27 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let btnW: CGFloat = 220.0
         let btnH: CGFloat = 54.0
         let actionBtnNode = SKNode()
-        actionBtnNode.name = "shopActionButton"
+        actionBtnNode.name = isSelected ? "shopAlreadySelected" : "shopActionButton"
         actionBtnNode.position = CGPoint(x: 0, y: -cardH * 0.38)
         actionBtnNode.zPosition = 3
         content.addChild(actionBtnNode)
         
         if isSelected {
-            let btnBg = SKSpriteNode(imageNamed: "gui_btn_small_blue")
-            btnBg.name = "shopActionButton"
+            let btnBg = SKSpriteNode(imageNamed: theme.guiSecondaryBtnName)
+            btnBg.name = "shopAlreadySelected"
             btnBg.size = CGSize(width: btnW, height: btnH)
             btnBg.zPosition = 1
             actionBtnNode.addChild(btnBg)
             
             let checkIcon = SKSpriteNode(imageNamed: "gui_icon_check")
-            checkIcon.name = "shopActionButton"
+            checkIcon.name = "shopAlreadySelected"
             checkIcon.size = CGSize(width: 20.0, height: 20.0)
             checkIcon.position = CGPoint(x: -42.0, y: 1.0)
             checkIcon.zPosition = 3
             btnBg.addChild(checkIcon)
             
             let label = SKLabelNode(fontNamed: AppFont.name)
-            label.name = "shopActionButton"
+            label.name = "shopAlreadySelected"
             label.text = "SELECTED"
             label.fontSize = 20.0
             label.fontColor = .white
@@ -1217,7 +1280,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             label.zPosition = 3
             btnBg.addChild(label)
         } else if isUnlocked {
-            let btnBg = SKSpriteNode(imageNamed: "gui_btn_large_orange")
+            let btnBg = SKSpriteNode(imageNamed: theme.guiPrimaryBtnName)
             btnBg.name = "shopActionButton"
             btnBg.size = CGSize(width: btnW, height: btnH)
             btnBg.zPosition = 1
@@ -1234,7 +1297,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             btnBg.addChild(label)
         } else {
             // Заблокована тема — покупка
-            let btnBg = SKSpriteNode(imageNamed: "gui_btn_large_orange")
+            let btnBg = SKSpriteNode(imageNamed: theme.guiPrimaryBtnName)
             btnBg.name = "shopActionButton"
             btnBg.size = CGSize(width: btnW, height: btnH)
             btnBg.alpha = canAfford ? 1.0 : 0.65
@@ -1308,11 +1371,33 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // 2. Оновлення атмосферного оверлею фону та текстури фону
         let newBgTex = backgroundTexture
+        newBgTex.filteringMode = .linear
         if newBgTex.size().width > 0 {
             backgroundNode?.texture = newBgTex
+            let textureSize = newBgTex.size()
+            let baseScale = max(size.width / textureSize.width, size.height / textureSize.height)
+            let scale = baseScale * backgroundScaleMultiplier
+            let bgSize = CGSize(width: textureSize.width * scale, height: textureSize.height * scale)
+            backgroundNode?.size = bgSize
+            
+            let topH = max(60.0, (size.height - bgSize.height) / 2.0 + 80.0)
+            backgroundTopExtensionNode?.size = CGSize(width: max(size.width, bgSize.width) + 40.0, height: topH)
+            backgroundTopExtensionNode?.position = CGPoint(x: 0, y: (bgSize.height / 2.0) + (topH / 2.0) - 2.0)
+            
+            let botH = max(60.0, (size.height - bgSize.height) / 2.0 + 80.0)
+            backgroundBottomExtensionNode?.size = CGSize(width: max(size.width, bgSize.width) + 40.0, height: botH)
+            backgroundBottomExtensionNode?.position = CGPoint(x: 0, y: -(bgSize.height / 2.0) - (botH / 2.0) + 2.0)
         }
+        backgroundTopExtensionNode?.run(SKAction.colorize(with: theme.backgroundTopColor, colorBlendFactor: 1.0, duration: 0.35))
+        backgroundBottomExtensionNode?.run(SKAction.colorize(with: theme.backgroundBottomColor, colorBlendFactor: 1.0, duration: 0.35))
         backgroundOverlayNode?.run(SKAction.colorize(with: theme.backgroundOverlayColor, colorBlendFactor: 1.0, duration: 0.35))
         backgroundOverlayNode?.run(SKAction.fadeAlpha(to: theme.backgroundOverlayAlpha, duration: 0.35))
+        
+        // Оновлення текстури сердець у HUD
+        let heartTex = SKTexture(imageNamed: theme.heartTextureName)
+        for heart in heartHUDNodes {
+            heart.texture = heartTex
+        }
         
         // 3. Повне перезавантаження траси, стін, прірв та декорацій під нову тему (у режимі меню)
         if gameState == .menu {
@@ -1333,7 +1418,31 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             player.setReadyStance()
         }
         
-        // 4. Оновлення лічильника меню
+        // 4. Оновлення елементів інтерфейсу головного меню під активну тему
+        if let menu = menuNode {
+            if let titleContainer = menu.childNode(withName: "menuTitle") {
+                (titleContainer.childNode(withName: "menuBanner") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiBannerName)
+                (titleContainer.childNode(withName: "menuBannerShadow") as? SKLabelNode)?.fontColor = theme.guiBannerShadowColor
+            }
+            if let card = menu.childNode(withName: "menuCard") as? SKSpriteNode {
+                card.texture = SKTexture(imageNamed: theme.guiStatsBarName)
+                (card.childNode(withName: "menuBestScoreText") as? SKLabelNode)?.fontColor = theme.guiStatsTextColor
+                (card.childNode(withName: "menuCoinsText") as? SKLabelNode)?.fontColor = theme.guiStatsTextColor
+            }
+            (menu.childNode(withName: "menuPlayButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiPrimaryBtnName)
+            (menu.childNode(withName: "menuShopButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiSecondaryBtnName)
+            (menu.childNode(withName: "menuSoundButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
+        }
+        
+        // 5. Оновлення елементів інтерфейсу магазину (якщо відкритий)
+        if let card = shopNode?.childNode(withName: "shopCard") {
+            (card.childNode(withName: "shopBanner") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiBannerName)
+            (card.childNode(withName: "shopCloseButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
+            (card.childNode(withName: "shopPrevButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
+            (card.childNode(withName: "shopNextButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
+        }
+        
+        // 6. Оновлення лічильника меню
         updateMenuCoinsDisplay()
     }
     
@@ -1578,9 +1687,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             return
         }
         
-        // 2. Прадавня статуя або портал — горизонтально закріплені на скелі (основа в скелі, вершина в бік каньйону)
-        if texName.contains("statue") || texName.contains("portal") {
-            let landmarkHeight: CGFloat = texName.contains("statue") ? CGFloat.random(in: 74...86) : CGFloat.random(in: 70...80)
+        // 2. Прадавня статуя, портал або кришталева колона / розсип — горизонтально закріплені на скелі (основа в скелі, вершина в бік каньйону)
+        if texName.contains("statue") || texName.contains("portal") || texName.contains("pillar") || texName.contains("pile") {
+            let landmarkHeight: CGFloat = (texName.contains("statue") || texName.contains("pillar")) ? CGFloat.random(in: 74...86) : CGFloat.random(in: 70...80)
             let landmarkWidth = landmarkHeight * aspect
             let landmark = SKSpriteNode(texture: tex, size: CGSize(width: landmarkWidth, height: landmarkHeight))
             landmark.zPosition = -5
@@ -1626,21 +1735,26 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         decorationNodes.append(tree)
     }
     
-    /// Спавнить табличку біля прірви (у горизонтальній орієнтації перпендикулярно до скелі)
+    /// Спавнить попереджувальну табличку на безпечній відстані перед прірвою (на суцільній стіні нижче уступу)
     private func spawnAbyssWarningSign(onLeftWall: Bool, atY: CGFloat) {
         let texture = signpostTextures.randomElement() ?? signpostTextures[0]
         let sign = SKSpriteNode(texture: texture, size: CGSize(width: 28, height: 32))
         sign.zPosition = 3.2
         let signOffset: CGFloat = (32.0 / 2.0) - 3.0
         
+        // Розміщуємо табличку завчасно перед прірвою (на 1.25 тайла нижче обриву, на суцільній стіні)
+        let warningY = atY - (Config.tileSize * 1.25)
+        
         if onLeftWall {
             sign.zRotation = -.pi / 2.0
             sign.xScale = -1.0
-            sign.position = CGPoint(x: Config.wallWidth + signOffset, y: atY + (Config.tileSize * 0.40))
+            sign.position = CGPoint(x: Config.wallWidth + signOffset, y: warningY)
+            lastLeftDecoY = warningY
         } else {
             sign.zRotation = .pi / 2.0
             sign.xScale = 1.0
-            sign.position = CGPoint(x: size.width - Config.wallWidth - signOffset, y: atY + (Config.tileSize * 0.40))
+            sign.position = CGPoint(x: size.width - Config.wallWidth - signOffset, y: warningY)
+            lastRightDecoY = warningY
         }
         
         addChild(sign)
@@ -1903,7 +2017,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             return
         }
         
-        let heart = HeartItemNode()
+        let heart = HeartItemNode(textureName: currentTheme.heartTextureName)
         heart.position = CGPoint(x: heartX, y: atY)
         addChild(heart)
         trackHeartNodes.append(heart)
@@ -2231,6 +2345,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                     guard currentShopIndex >= 0, currentShopIndex < themes.count else { return }
                     let theme = themes[currentShopIndex]
                     
+                    // Якщо скін/тема вже вибрана — ігноруємо повторне натискання (не перебудовуємо карту)
+                    guard theme.id != ThemeManager.shared.selectedThemeID else { return }
+                    
                     if ThemeManager.shared.isUnlocked(theme) {
                         playJumpSound()
                         ThemeManager.shared.selectTheme(theme)
@@ -2322,7 +2439,20 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     private func performJump() {
-        guard !player.isJumping, !isGameOver, !isPlayerFalling else { return }
+        guard !isGameOver, !isPlayerFalling else {
+            hasBufferedJump = false
+            return
+        }
+        
+        // Якщо герой зараз у повітрі (в процесі стрибка) — буферизуємо тап,
+        // щоб миттєво відштовхнутися від наступної стіни без втрати натискання
+        if player.isJumping {
+            hasBufferedJump = true
+            bufferedJumpTimestamp = CACurrentMediaTime()
+            return
+        }
+        
+        hasBufferedJump = false
         
         // Відтворюємо звук стрибка
         playJumpSound()
@@ -2330,8 +2460,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // Визначаємо цільову горизонтальну позицію (на протилежну стіну)
         let targetX: CGFloat = player.isOnLeftWall ? playerRightX : playerLeftX
         
-        // Делегуємо виконання стрибка у PlayerNode
-        player.jump(to: targetX, duration: Config.jumpDuration) { [weak self] in
+        // Делегуємо виконання стрибка у PlayerNode з адаптивною тривалістю
+        player.jump(to: targetX, duration: currentJumpDuration) { [weak self] in
             guard let self = self else { return }
             if self.gameState == .menu {
                 self.player.setReadyStance()
@@ -2340,6 +2470,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 self.player.setReadyStance()
             } else if self.gameState == .playing {
                 self.player.startRunningAnimation()
+                
+                // Перевіряємо наявність тапу в буфері введення (Input Buffer)
+                let now = CACurrentMediaTime()
+                if self.hasBufferedJump && (now - self.bufferedJumpTimestamp <= self.jumpBufferWindow) {
+                    self.hasBufferedJump = false
+                    self.performJump()
+                } else {
+                    self.hasBufferedJump = false
+                }
             }
         }
     }
@@ -2526,6 +2665,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     /// Відновлення героя при потраплянні у прірву: плавний відскок на протилежну безпечну стіну
     /// БЕЗ стрибків камери вперед та БЕЗ ефекту сіпання
     private func recoverFromAbyss(abyss: AbyssObstacleNode?) {
+        hasBufferedJump = false
         // Визначаємо стіну з прірвою та безпечну протилежну стіну
         let wallWithAbyssIsLeft = abyss?.isOnLeftWall ?? player.isOnLeftWall
         let safeWallIsLeft = !wallWithAbyssIsLeft
@@ -2559,7 +2699,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // 1. Акуратні міні-сердечка (~10 пт), що м'яко здіймаються вгору
         let heartEmitter = SKEmitterNode()
-        heartEmitter.particleTexture = GameScene.heartParticleTexture
+        heartEmitter.particleTexture = SKTexture(imageNamed: currentTheme.heartTextureName)
         heartEmitter.particleBirthRate = 200
         heartEmitter.numParticlesToEmit = 7
         heartEmitter.particleLifetime = 0.38
@@ -2613,16 +2753,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     
     // MARK: - Lives & Mob Interaction
     
-    /// Обробка потрапляння вогняної стріли моба-стрільця в героя
+    /// Обробка потрапляння снаряду моба-стрільця в героя (як на стіні, так і в повітрі під час стрибка)
     private func handleArrowHit(arrow: FireArrowNode) {
         guard !player.isInvulnerable, !isGameOver, !isPlayerFalling else { return }
-        
-        // Якщо герой у цей момент перебуває у стрибку між стінами — це успішне ухилення!
-        // Стріла розсіюється, не завдаючи шкоди герою.
-        if player.isJumping {
-            arrow.explodeAndRemove()
-            return
-        }
         
         arrow.explodeAndRemove()
         currentLives -= 1
@@ -2631,7 +2764,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         if currentLives > 0 {
             player.startInvulnerability(duration: 3.0)
         } else {
-            triggerMobDefeat(reason: "Hit by fiery arrow")
+            triggerMobDefeat(reason: "Hit by projectile")
         }
     }
     
@@ -2654,6 +2787,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     /// Поразка персонажа від ворожого моба (коли життів не залишилося)
     private func triggerMobDefeat(reason: String) {
         guard !isPlayerFalling, !isGameOver else { return }
+        hasBufferedJump = false
         isPlayerFalling = true
         
         playGameOverSound()
@@ -2761,6 +2895,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     /// Запуск ефекту падіння персонажа безпосередньо всередину прірви (у розрив стіни)
     private func triggerAbyssFall(targetPoint: CGPoint?, reason: String) {
         guard !isPlayerFalling, !isGameOver else { return }
+        hasBufferedJump = false
         isPlayerFalling = true
         
         // Відтворюємо звук закінчення гри
@@ -2862,10 +2997,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         reasonLabel.zPosition = 3
         dialogCard.addChild(reasonLabel)
         
-        // Картка результатів (ButtonText_Orange_TextField)
+        // Картка результатів
         let statsW = dialogW - 40.0
         let statsH: CGFloat = 68.0
-        let statsBar = SKSpriteNode(imageNamed: "gui_bar_orange")
+        let statsBar = SKSpriteNode(imageNamed: currentTheme.guiStatsBarName)
         statsBar.size = CGSize(width: statsW, height: statsH)
         statsBar.position = CGPoint(x: 0, y: 44.0)
         statsBar.zPosition = 3
@@ -2880,7 +3015,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let scoreSummary = SKLabelNode(fontNamed: AppFont.name)
         scoreSummary.text = "SCORE: \(score.formattedWithSeparator)   BEST: \(bestScore.formattedWithSeparator)"
         scoreSummary.fontSize = 15.5
-        scoreSummary.fontColor = SKColor(red: 0.22, green: 0.09, blue: 0.03, alpha: 1.0)
+        scoreSummary.fontColor = currentTheme.guiStatsTextColor
         scoreSummary.horizontalAlignmentMode = .left
         scoreSummary.verticalAlignmentMode = .center
         scoreSummary.position = CGPoint(x: -statsW * 0.28, y: 12.0)
@@ -2896,7 +3031,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let coinsSummary = SKLabelNode(fontNamed: AppFont.name)
         coinsSummary.text = "COINS: +\(coinsCollected.formattedWithSeparator)   TOTAL: \(totalCoins.formattedWithSeparator)"
         coinsSummary.fontSize = 14.5
-        coinsSummary.fontColor = SKColor(red: 0.22, green: 0.09, blue: 0.03, alpha: 1.0)
+        coinsSummary.fontColor = currentTheme.guiStatsTextColor
         coinsSummary.horizontalAlignmentMode = .left
         coinsSummary.verticalAlignmentMode = .center
         coinsSummary.position = CGPoint(x: -statsW * 0.28, y: -14.0)
@@ -2922,7 +3057,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             reviveBtn.zPosition = 3
             dialogCard.addChild(reviveBtn)
             
-            let heartIcon = SKSpriteNode(imageNamed: "life_hearth")
+            let heartIcon = SKSpriteNode(imageNamed: currentTheme.heartTextureName)
             heartIcon.name = "adReviveButton"
             heartIcon.size = CGSize(width: 22.0, height: 22.0)
             heartIcon.position = CGPoint(x: -reviveBtnW * 0.30, y: 0)
@@ -2972,10 +3107,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             self.gameOverDoubleCoinsLabel = doubleLabel
         }
         
-        // Кнопка 2: PLAY AGAIN (ButtonText_Large_Orange_Round)
+        // Кнопка 2: PLAY AGAIN
         let retryBtnW = dialogW - 50.0
         let retryBtnH: CGFloat = 50.0
-        let retryBtn = SKSpriteNode(imageNamed: "gui_btn_large_orange")
+        let retryBtn = SKSpriteNode(imageNamed: currentTheme.guiPrimaryBtnName)
         retryBtn.name = "retryButton"
         retryBtn.size = CGSize(width: retryBtnW, height: retryBtnH)
         retryBtn.position = CGPoint(x: 0, y: retryBtnY)
@@ -3000,10 +3135,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         retryLabel.zPosition = 4
         retryBtn.addChild(retryLabel)
         
-        // Кнопка 3: MAIN MENU (ButtonText_Small_Blue_Round)
+        // Кнопка 3: MAIN MENU
         let menuBtnW = dialogW - 64.0
         let menuBtnH: CGFloat = 46.0
-        let menuBtn = SKSpriteNode(imageNamed: "gui_btn_small_blue")
+        let menuBtn = SKSpriteNode(imageNamed: currentTheme.guiSecondaryBtnName)
         menuBtn.name = "menuButton"
         menuBtn.size = CGSize(width: menuBtnW, height: menuBtnH)
         menuBtn.position = CGPoint(x: 0, y: menuBtnY)

@@ -157,11 +157,13 @@ final class PlayerNode: SKSpriteNode {
     /// Стрибок на протилежну стіну з переворотом у повітрі
     func jump(to targetX: CGFloat, duration: TimeInterval, completion: @escaping () -> Void) {
         guard currentState != .dead else { return }
+        removeAction(forKey: "landingCushion")
+        self.yScale = 1.0
         currentState = .jumping
         
-        // 1. Горизонтальний рух із плавним easing
+        // 1. Горизонтальний рух із вибуховим стартом (.easeOut замість повільного розгону .easeInEaseOut)
         let moveX = SKAction.moveTo(x: targetX, duration: duration)
-        moveX.timingMode = .easeInEaseOut
+        moveX.timingMode = .easeOut
         
         // 2. Акробатичний переворот у повітрі:
         // Герой відштовхується ногами від поточної стіни, розвертається в польоті
@@ -178,7 +180,7 @@ final class PlayerNode: SKSpriteNode {
             },
             SKAction.rotate(toAngle: targetRotation, duration: halfDuration)
         ])
-        midAirFlip.timingMode = .easeInEaseOut
+        midAirFlip.timingMode = .easeOut
         
         let flightGroup = SKAction.group([moveX, midAirFlip])
         
@@ -193,10 +195,10 @@ final class PlayerNode: SKSpriteNode {
             
             // Амортизація ногами (squash & stretch) при ударі об стіну
             let landingCushion = SKAction.sequence([
-                SKAction.scaleY(to: 0.78, duration: 0.04),
-                SKAction.scaleY(to: 1.0, duration: 0.08)
+                SKAction.scaleY(to: 0.82, duration: 0.03),
+                SKAction.scaleY(to: 1.0, duration: 0.06)
             ])
-            self.run(landingCushion)
+            self.run(landingCushion, withKey: "landingCushion")
             
             completion()
         }
@@ -208,6 +210,8 @@ final class PlayerNode: SKSpriteNode {
     /// Акробатичний плавний відскок на безпечну стіну без телепортації
     func rebound(to targetX: CGFloat, onLeftWall targetIsLeft: Bool, duration: TimeInterval = 0.22, completion: (() -> Void)? = nil) {
         guard currentState != .dead else { return }
+        removeAction(forKey: "landingCushion")
+        self.yScale = 1.0
         removeAction(forKey: "jumpAction")
         currentState = .jumping
         self.color = .clear
@@ -240,10 +244,10 @@ final class PlayerNode: SKSpriteNode {
             self.colorBlendFactor = 0.0
             
             let landingCushion = SKAction.sequence([
-                SKAction.scaleY(to: 0.82, duration: 0.04),
-                SKAction.scaleY(to: 1.0, duration: 0.08)
+                SKAction.scaleY(to: 0.82, duration: 0.03),
+                SKAction.scaleY(to: 1.0, duration: 0.06)
             ])
-            self.run(landingCushion)
+            self.run(landingCushion, withKey: "landingCushion")
             
             completion?()
         }
@@ -256,6 +260,8 @@ final class PlayerNode: SKSpriteNode {
         guard currentState != .dead else { return }
         currentState = .dead
         
+        removeAction(forKey: "landingCushion")
+        self.yScale = 1.0
         removeAction(forKey: "jumpAction")
         removeAction(forKey: "runAnimation")
         

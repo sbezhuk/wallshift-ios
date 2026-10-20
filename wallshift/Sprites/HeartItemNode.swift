@@ -21,8 +21,8 @@ final class HeartItemNode: SKSpriteNode {
     private(set) var isCollected: Bool = false
     
     // MARK: - Initialization
-    init() {
-        let texture = SKTexture(imageNamed: "life_hearth")
+    init(textureName: String = "life_hearth") {
+        let texture = SKTexture(imageNamed: textureName)
         super.init(texture: texture, color: .clear, size: Constants.visualSize)
         
         name = "HeartItemNode"
@@ -38,6 +38,11 @@ final class HeartItemNode: SKSpriteNode {
         zPosition = 4
         setupPhysics()
         startIdleAnimation()
+    }
+    
+    /// Оновлення текстури серця при зміні теми
+    func applyTheme(textureName: String) {
+        self.texture = SKTexture(imageNamed: textureName)
     }
     
     // MARK: - Physics

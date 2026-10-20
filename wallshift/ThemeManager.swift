@@ -34,6 +34,8 @@ struct ThemeData {
     
     // Background & Environment Tint
     let backgroundTextureName: String
+    let backgroundTopColor: SKColor
+    let backgroundBottomColor: SKColor
     let backgroundOverlayColor: SKColor
     let backgroundOverlayAlpha: CGFloat
     
@@ -48,6 +50,20 @@ struct ThemeData {
     let shooterPrefix: String
     let shooterFrameCount: Int
     let projectileType: ProjectileType
+    
+    // Items
+    let heartTextureName: String
+    
+    // GUI Styling
+    let guiBannerName: String
+    let guiBannerShadowColor: SKColor
+    let guiStatsBarName: String
+    let guiStatsTextColor: SKColor
+    let guiPrimaryBtnName: String
+    let guiSecondaryBtnName: String
+    let guiCircleBtnName: String
+    let guiCardFrameName: String
+    let guiAccentColor: SKColor
 }
 
 // MARK: - ThemeManager
@@ -76,6 +92,8 @@ final class ThemeManager {
             cliffLowerTileName: "abyss_cliff_right",
             cliffUpperTileName: "abyss_cliff_left",
             backgroundTextureName: "backround",
+            backgroundTopColor: SKColor(red: 0.69, green: 0.56, blue: 0.44, alpha: 1.0),
+            backgroundBottomColor: SKColor(red: 0.73, green: 0.51, blue: 0.35, alpha: 1.0),
             backgroundOverlayColor: .clear,
             backgroundOverlayAlpha: 0.0,
             treeTextureNames: ["deco_tree_01", "deco_tree_02"],
@@ -85,7 +103,17 @@ final class ThemeManager {
             patrollerFrameCount: 24,
             shooterPrefix: "shooter_walk_",
             shooterFrameCount: 24,
-            projectileType: .fire
+            projectileType: .fire,
+            heartTextureName: "life_hearth",
+            guiBannerName: "gui_banner_orange",
+            guiBannerShadowColor: SKColor(red: 0.12, green: 0.05, blue: 0.02, alpha: 0.95),
+            guiStatsBarName: "gui_bar_orange",
+            guiStatsTextColor: SKColor(red: 0.22, green: 0.09, blue: 0.03, alpha: 1.0),
+            guiPrimaryBtnName: "gui_btn_large_orange",
+            guiSecondaryBtnName: "gui_btn_small_blue",
+            guiCircleBtnName: "gui_btn_circle_orange",
+            guiCardFrameName: "gui_card_orange",
+            guiAccentColor: SKColor(red: 1.0, green: 0.65, blue: 0.18, alpha: 1.0)
         ),
         
         // 2. Forest Ranger (Unlockable in market with coins)
@@ -103,6 +131,8 @@ final class ThemeManager {
             cliffLowerTileName: "forest_cliff_lower",
             cliffUpperTileName: "forest_cliff_upper",
             backgroundTextureName: "forest_bg",
+            backgroundTopColor: SKColor(red: 0.18, green: 0.45, blue: 0.32, alpha: 1.0),
+            backgroundBottomColor: SKColor(red: 0.18, green: 0.45, blue: 0.32, alpha: 1.0),
             backgroundOverlayColor: SKColor(red: 0.02, green: 0.15, blue: 0.08, alpha: 1.0),
             backgroundOverlayAlpha: 0.15,
             treeTextureNames: [
@@ -142,7 +172,86 @@ final class ThemeManager {
             patrollerFrameCount: 24,
             shooterPrefix: "ranger_shooter_walk_",
             shooterFrameCount: 24,
-            projectileType: .water
+            projectileType: .water,
+            heartTextureName: "forest_heart",
+            guiBannerName: "gui_banner_green",
+            guiBannerShadowColor: SKColor(red: 0.02, green: 0.12, blue: 0.04, alpha: 0.95),
+            guiStatsBarName: "gui_bar_green",
+            guiStatsTextColor: SKColor(red: 0.90, green: 0.96, blue: 0.91, alpha: 1.0),
+            guiPrimaryBtnName: "gui_btn_large_green",
+            guiSecondaryBtnName: "gui_btn_small_blue",
+            guiCircleBtnName: "gui_btn_circle_green",
+            guiCardFrameName: "gui_card_green",
+            guiAccentColor: SKColor(red: 0.35, green: 0.88, blue: 0.40, alpha: 1.0)
+        ),
+        
+        // 3. Crystal Golem (Unlockable in market with coins)
+        ThemeData(
+            id: "crystal_golem",
+            name: "CRYSTAL GOLEM",
+            subtitle: "Crystal Caves • Golem & Necromancer • Water Arrows",
+            price: 50000,
+            previewImageName: "golem_preview",
+            heroRunPrefix: "golem_run_",
+            heroRunCount: 12,
+            wallTileName: "crystal_wall_ground",
+            wallDirtTileName: "crystal_wall_ground",
+            wallRockTileName: "crystal_wall_ground",
+            cliffLowerTileName: "crystal_cliff_lower",
+            cliffUpperTileName: "crystal_cliff_upper",
+            backgroundTextureName: "crystal_bg",
+            backgroundTopColor: SKColor(red: 0.14, green: 0.15, blue: 0.29, alpha: 1.0),
+            backgroundBottomColor: SKColor(red: 0.11, green: 0.11, blue: 0.21, alpha: 1.0),
+            backgroundOverlayColor: SKColor(red: 0.06, green: 0.10, blue: 0.28, alpha: 1.0),
+            backgroundOverlayAlpha: 0.18,
+            treeTextureNames: [
+                "deco_crystal_tree",
+                "deco_crystal_pillar",
+                "deco_crystal_pile_01",
+                "deco_crystal_pile_02"
+            ],
+            decorTextureNames: [
+                "deco_crystal_01",
+                "deco_crystal_02",
+                "deco_crystal_03",
+                "deco_crystal_candlestick",
+                "deco_crystal_rune_stone",
+                "deco_crystal_stone_01",
+                "deco_crystal_stone_02",
+                "deco_crystal_pile_stones_01",
+                "deco_crystal_pile_stones_02",
+                "deco_crystal_rock_01",
+                "deco_crystal_rock_02",
+                "deco_crystal_rock_03",
+                "deco_crystal_rock_04",
+                "deco_crystal_rock_05",
+                "deco_crystal_rock_06",
+                "deco_crystal_fence_01",
+                "deco_crystal_fence_02"
+            ],
+            signpostTextureNames: [
+                "deco_crystal_sign_01",
+                "deco_crystal_sign_02",
+                "deco_crystal_sign_03",
+                "deco_crystal_sign_04",
+                "deco_crystal_sign_05",
+                "deco_crystal_sign_06"
+            ],
+            patrollerPrefix: "golem_patroller_walk_",
+            patrollerFrameCount: 24,
+            shooterPrefix: "necromancer_shooter_walk_",
+            shooterFrameCount: 24,
+            projectileType: .water,
+            heartTextureName: "crystal_heart",
+            guiBannerName: "gui_banner_blue",
+            guiBannerShadowColor: SKColor(red: 0.02, green: 0.06, blue: 0.18, alpha: 0.95),
+            guiStatsBarName: "gui_bar_blue",
+            guiStatsTextColor: SKColor(red: 0.90, green: 0.96, blue: 1.0, alpha: 1.0),
+            guiPrimaryBtnName: "gui_btn_large_blue",
+            guiSecondaryBtnName: "gui_btn_small_orange",
+            guiCircleBtnName: "gui_btn_circle_blue",
+            guiCardFrameName: "gui_card_blue",
+            guiAccentColor: SKColor(red: 0.35, green: 0.75, blue: 1.0, alpha: 1.0)
         )
     ]
     
