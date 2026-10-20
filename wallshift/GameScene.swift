@@ -296,8 +296,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var backgroundTopExtensionNode: SKSpriteNode?
     private var backgroundBottomExtensionNode: SKSpriteNode?
     
-    /// Масштаб фонового зображення (зменшено на ~18% від колишнього 1.05 Aspect Fill, щоб пікселі були щільними та чіткими)
-    private let backgroundScaleMultiplier: CGFloat = 0.86
+    /// Масштаб фонового зображення: повне покриття екрана (Aspect Fill із запасом 1.05 для гарантованого покриття всієї площі без розривів)
+    private let backgroundScaleMultiplier: CGFloat = 1.05
     
     /// Прапорець закінчення гри
     private(set) var isGameOver: Bool = false
@@ -782,8 +782,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         backgroundTexture.filteringMode = .linear
         
-        // Масштабуємо фон: базовий Aspect Fill масштабується з коефіцієнтом backgroundScaleMultiplier (0.86),
-        // завдяки чому пікселі стають значно щільнішими, деталі фону виглядають чітко і без пікселізації
+        // Масштабуємо фон: повний Aspect Fill із коефіцієнтом backgroundScaleMultiplier (1.05),
+        // завдяки чому ілюстрований фон гарантовано покриває екран від самого верху до низу без зазорів
         let baseScale = max(size.width / textureSize.width, size.height / textureSize.height)
         let scale = baseScale * backgroundScaleMultiplier
         let bgSize = CGSize(width: textureSize.width * scale, height: textureSize.height * scale)
@@ -794,8 +794,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         cameraNode.addChild(background)
         self.backgroundNode = background
         
-        // Верхнє безшовне розширення атмосфери теми (перекриває безпечну зону та верх екрана)
-        let topH = max(60.0, (size.height - bgSize.height) / 2.0 + 80.0)
+        // Верхнє розширення атмосфери за межами екрана (страховка для вирізів та Dynamic Island)
+        let topH: CGFloat = 120.0
         let topExt = SKSpriteNode(
             color: currentTheme.backgroundTopColor,
             size: CGSize(width: max(size.width, bgSize.width) + 40.0, height: topH)
@@ -805,8 +805,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         cameraNode.addChild(topExt)
         self.backgroundTopExtensionNode = topExt
         
-        // Нижнє безшовне розширення атмосфери теми (перекриває нижню зону огляду)
-        let botH = max(60.0, (size.height - bgSize.height) / 2.0 + 80.0)
+        // Нижнє розширення атмосфери за межами екрана (страховка)
+        let botH: CGFloat = 120.0
         let botExt = SKSpriteNode(
             color: currentTheme.backgroundBottomColor,
             size: CGSize(width: max(size.width, bgSize.width) + 40.0, height: botH)
@@ -819,7 +819,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // Атмосферний кольоровий оверлей теми (покриває весь екран із запасом)
         let overlay = SKSpriteNode(
             color: currentTheme.backgroundOverlayColor,
-            size: CGSize(width: max(size.width, bgSize.width) + 40.0, height: size.height + 160.0)
+            size: CGSize(width: max(size.width, bgSize.width) + 40.0, height: max(size.height, bgSize.height) + 160.0)
         )
         overlay.alpha = currentTheme.backgroundOverlayAlpha
         overlay.zPosition = -8
@@ -1601,11 +1601,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             let bgSize = CGSize(width: textureSize.width * scale, height: textureSize.height * scale)
             backgroundNode?.size = bgSize
             
-            let topH = max(60.0, (size.height - bgSize.height) / 2.0 + 80.0)
+            let topH: CGFloat = 120.0
             backgroundTopExtensionNode?.size = CGSize(width: max(size.width, bgSize.width) + 40.0, height: topH)
             backgroundTopExtensionNode?.position = CGPoint(x: 0, y: (bgSize.height / 2.0) + (topH / 2.0) - 2.0)
             
-            let botH = max(60.0, (size.height - bgSize.height) / 2.0 + 80.0)
+            let botH: CGFloat = 120.0
             backgroundBottomExtensionNode?.size = CGSize(width: max(size.width, bgSize.width) + 40.0, height: botH)
             backgroundBottomExtensionNode?.position = CGPoint(x: 0, y: -(bgSize.height / 2.0) - (botH / 2.0) + 2.0)
         }
