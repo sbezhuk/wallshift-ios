@@ -1,0 +1,15 @@
+{
+  "originHash" : "3a0eb0c0bced1da2f501fbc38196aeb917911717128d5a1323a6aa1be90e1381",
+  "pins" : [
+    {
+      "identity" : "unity-ads-swift-package",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Unity-Technologies/Unity-Ads-Swift-Package",
+      "state" : {
+        "revision" : "09bdf0e27186667f381196f57ceece714c8917a2",
+        "version" : "4.21.0"
+      }
+    }
+  ],
+  "version" : 3
+}

@@ -40,11 +40,11 @@ final class MobNode: SKSpriteNode {
         static let shooterPrefix: String = "shooter_walk_"
         
         // Параметри стрільби
-        static let shotCooldown: TimeInterval = 1.3
-        static let detectionRangeY: CGFloat = 580.0
-        static let telegraphDuration: TimeInterval = 0.38
-        static let volleyDelay: TimeInterval = 0.44
-        static let leadAheadY: CGFloat = 180.0
+        static let shotCooldown: TimeInterval = 2.4
+        static let detectionRangeY: CGFloat = 460.0
+        static let telegraphDuration: TimeInterval = 0.35
+        static let volleyDelay: TimeInterval = 0.80
+        static let leadAheadY: CGFloat = 80.0
     }
     
     // MARK: - Properties
@@ -60,6 +60,7 @@ final class MobNode: SKSpriteNode {
     private var lastShotTime: TimeInterval = 0
     private var lastPlayerPosition: CGPoint = .zero
     private var lastPlayerIsOnLeftWall: Bool = true
+    private var currentLeadAheadY: CGFloat = Constants.leadAheadY
     
     /// Колбек для створення та додавання вогняної стріли у сцену
     var onShootArrow: ((_ startPosition: CGPoint, _ targetPosition: CGPoint) -> Void)?
@@ -202,12 +203,17 @@ final class MobNode: SKSpriteNode {
     
     // MARK: - Shooting Logic
     /// Оновлення перевірки присутності гравця та ініціація серії пострілів
+    /// Оновлення перевірки присутності гравця та ініціація серії пострілів.
+    /// Усі параметри (радіус реакції, кулдаун, затримка перед пострілом, упередження)
+    /// динамічно адаптуються під поточну швидкість гри, щоб моб залишався небезпечним суперником.
     func updateShooting(
         playerPosition: CGPoint,
         playerIsOnLeftWall: Bool,
         playerIsJumping: Bool,
         currentTime: TimeInterval,
-        isDodgeSafe: Bool = true
+        isDodgeSafe: Bool = true,
+        canDoubleShot: Bool = false,
+        gameSpeed: CGFloat = 290.0
     ) {
         // Оновлюємо найсвіжіші координати цілі щокадру
         self.lastPlayerPosition = playerPosition
@@ -215,51 +221,74 @@ final class MobNode: SKSpriteNode {
         
         guard mobType == .shooter, !isAttacking else { return }
         
-        // 1. Гравець повинен знаходитися в зоні досяжності каньйону (наближається знизу або біжить поруч)
+        // Якщо навпроти гравця прірва і йому нікуди стрибнути для ухилення — утримуємо вогонь
+        guard isDodgeSafe else { return }
+        
+        // Динамічний радіус виявлення: на високій швидкості моб реагує раніше, не даючи гравцю пролетіти повз
+        let speedFactor = max(0, gameSpeed - 290.0)
+        let dynamicDetectionRange = min(640.0, Constants.detectionRangeY + (speedFactor * 0.45))
+        
+        // 1. Гравець повинен знаходитися в зоні досяжності каньйону (наближається знизу)
         let verticalDistance = position.y - playerPosition.y
-        guard verticalDistance > -90.0 && verticalDistance <= Constants.detectionRangeY else { return }
+        guard verticalDistance > 80.0 && verticalDistance <= dynamicDetectionRange else { return }
         
-        // 2. Перевірка кулдауну між серіями пострілів
-        guard currentTime - lastShotTime >= Constants.shotCooldown else { return }
+        // Якщо гравець на тій самій стіні, але вже занадто близько — не стріляємо, щоб дати шанс оббігти/перестрибнути
+        let isSameWall = (playerIsOnLeftWall == self.isOnLeftWall)
+        if isSameWall && verticalDistance < 140.0 {
+            return
+        }
         
-        // 3. Запуск серії пострілів
-        triggerAttackVolley(currentTime: currentTime)
+        // Динамічний кулдаун: на високій швидкості гри скорочується з 2.4 с до 1.5 с
+        let dynamicCooldown = max(1.5, Constants.shotCooldown - Double(speedFactor / 350.0))
+        guard currentTime - lastShotTime >= dynamicCooldown else { return }
+        
+        // Динамічні часові інтервали атаки під поточну швидкість гри
+        let dynamicTelegraph = max(0.18, Constants.telegraphDuration - Double(speedFactor / 1100.0))
+        let dynamicVolleyDelay = max(0.48, Constants.volleyDelay - Double(speedFactor / 700.0))
+        let dynamicLead = min(130.0, Constants.leadAheadY + (speedFactor * 0.15))
+        
+        // 3. Запуск серії пострілів (1 постріл на початкових рівнях, максимум 2 на високих)
+        triggerAttackVolley(
+            currentTime: currentTime,
+            totalShots: canDoubleShot ? 2 : 1,
+            telegraph: dynamicTelegraph,
+            volleyDelay: dynamicVolleyDelay,
+            leadAheadY: dynamicLead
+        )
     }
     
-    /// Підготовка та здійснення серії пострілів (черги) з упередженням на випередження
-    private func triggerAttackVolley(currentTime: TimeInterval) {
+    /// Підготовка та здійснення серії пострілів з динамічно збалансованими інтервалами
+    private func triggerAttackVolley(
+        currentTime: TimeInterval,
+        totalShots: Int,
+        telegraph: TimeInterval,
+        volleyDelay: TimeInterval,
+        leadAheadY: CGFloat
+    ) {
         guard !isAttacking else { return }
         isAttacking = true
         lastShotTime = currentTime
+        self.currentLeadAheadY = leadAheadY
         
         // Сповільнюємо рух патрулювання на час атаки
-        action(forKey: "patrolMovement")?.speed = 0.25
+        action(forKey: "patrolMovement")?.speed = 0.35
         
-        // Кількість пострілів у черзі (2-3 постріли)
-        let totalShots = Int.random(in: 2...3)
         var actions: [SKAction] = []
         
         for shotIndex in 0..<totalShots {
-            let prepDuration: TimeInterval = (shotIndex == 0) ? Constants.telegraphDuration : 0.28
-            
-            // Візуальний телеграф: пульсуючий спалах прицілювання
-            let chargeAction = SKAction.run { [weak self] in
-                self?.showChargeGlow(scale: shotIndex == 0 ? 1.5 : 1.3)
+            // Затримка реакції перед першим пострілом або інтервал перед другим
+            if shotIndex == 0 {
+                actions.append(SKAction.wait(forDuration: telegraph))
+            } else {
+                actions.append(SKAction.wait(forDuration: volleyDelay))
             }
-            actions.append(chargeAction)
-            actions.append(SKAction.wait(forDuration: prepDuration))
             
-            // Сам випуск снаряду зі свіжими координатами цілі
+            // Випуск снаряду зі свіжими координатами цілі
             let fireAction = SKAction.run { [weak self] in
                 guard let self = self else { return }
                 self.fireSingleProjectile()
             }
             actions.append(fireAction)
-            
-            // Інтервал між пострілами всередині черги
-            if shotIndex < totalShots - 1 {
-                actions.append(SKAction.wait(forDuration: Constants.volleyDelay))
-            }
         }
         
         // Завершення серії: відновлюємо нормальний темп ходьби
@@ -287,35 +316,11 @@ final class MobNode: SKSpriteNode {
             // На тій самій стіні: стріла летить уздовж стіни вниз назустріч гравцю
             aimTarget = CGPoint(x: self.position.x, y: self.position.y - 450.0)
         } else {
-            // На протилежній стіні: стріляємо НАПЕРЕД (на випередження руху гравця вгору)
-            let leadY = Constants.leadAheadY
-            let targetY = max(self.lastPlayerPosition.y + leadY, self.position.y - 60.0)
+            // На протилежній стіні: стріляємо з адаптивним упередженням по швидкості
+            let targetY = min(self.lastPlayerPosition.y + currentLeadAheadY, self.position.y - 30.0)
             aimTarget = CGPoint(x: self.lastPlayerPosition.x, y: targetY)
         }
         
         self.onShootArrow?(spawnPoint, aimTarget)
-    }
-    
-    /// Візуальний пульсуючий спалах прицілювання відповідно до типу магії снаряда
-    private func showChargeGlow(scale: CGFloat) {
-        let chargeGlow = SKShapeNode(circleOfRadius: 22.0)
-        if projectileType == .water {
-            chargeGlow.fillColor = SKColor(red: 0.15, green: 0.75, blue: 1.0, alpha: 0.85)
-            chargeGlow.strokeColor = SKColor(red: 0.60, green: 0.90, blue: 1.0, alpha: 1.0)
-        } else {
-            chargeGlow.fillColor = SKColor(red: 1.0, green: 0.35, blue: 0.05, alpha: 0.85)
-            chargeGlow.strokeColor = SKColor(red: 1.0, green: 0.90, blue: 0.20, alpha: 1.0)
-        }
-        chargeGlow.lineWidth = 2.5
-        chargeGlow.blendMode = .add
-        chargeGlow.zPosition = 6.0
-        addChild(chargeGlow)
-        
-        let pulse1 = SKAction.scale(to: scale, duration: 0.14)
-        let pulse2 = SKAction.scale(to: 1.0, duration: 0.10)
-        let pulse3 = SKAction.scale(to: scale * 1.1, duration: 0.10)
-        let fadeOut = SKAction.fadeOut(withDuration: 0.05)
-        let remove = SKAction.removeFromParent()
-        chargeGlow.run(SKAction.sequence([pulse1, pulse2, pulse3, fadeOut, remove]))
     }
 }

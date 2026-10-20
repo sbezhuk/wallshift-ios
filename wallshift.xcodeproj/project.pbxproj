@@ -6,6 +6,10 @@
 	objectVersion = 110;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		31A000030000000000000001 /* UnityAds in Frameworks */ = {isa = PBXBuildFile; productRef = 31A000020000000000000001 /* UnityAds */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		3138410230862D8B002B800B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -64,6 +68,7 @@
 		313840E530862D8A002B800B /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				31A000030000000000000001 /* UnityAds in Frameworks */,
 			);
 		};
 		313840FE30862D8B002B800B /* Frameworks */ = {
@@ -116,6 +121,9 @@
 				313840EA30862D8A002B800B /* wallshift */,
 			);
 			name = wallshift;
+			packageProductDependencies = (
+				31A000020000000000000001 /* UnityAds */,
+			);
 			productName = wallshift;
 			productReference = 313840E830862D8A002B800B /* wallshift.app */;
 			productType = "com.apple.product-type.application";
@@ -194,6 +202,9 @@
 			);
 			mainGroup = 313840DF30862D8A002B800B;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				31A000010000000000000001 /* XCRemoteSwiftPackageReference "Unity-Ads-Swift-Package" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 313840E930862D8A002B800B /* Products */;
 			projectDirPath = "";
@@ -567,6 +578,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		31A000010000000000000001 /* XCRemoteSwiftPackageReference "Unity-Ads-Swift-Package" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Unity-Technologies/Unity-Ads-Swift-Package";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.16.5;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		31A000020000000000000001 /* UnityAds */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 31A000010000000000000001 /* XCRemoteSwiftPackageReference "Unity-Ads-Swift-Package" */;
+			productName = UnityAds;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 313840E030862D8A002B800B /* Project object */;
 	validationLevel = 1;

@@ -93,7 +93,7 @@ final class ThemeManager {
             id: "forest_ranger",
             name: "FOREST RANGER",
             subtitle: "World Tree Roots • Ranger • Water Arrows",
-            price: 35,
+            price: 25000,
             previewImageName: "ranger_preview",
             heroRunPrefix: "forest_run_",
             heroRunCount: 12,

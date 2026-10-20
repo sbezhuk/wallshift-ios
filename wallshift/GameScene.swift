@@ -21,6 +21,12 @@ struct PhysicsCategory {
     static let coin: UInt32     = 1 << 5 // 32
 }
 
+// MARK: - App Font
+enum AppFont {
+    /// Головний шрифт гри (Jungle Adventurer)
+    static let name: String = "JungleAdventurerRegular"
+}
+
 // MARK: - GameScene
 final class GameScene: SKScene, SKPhysicsContactDelegate {
     
@@ -170,6 +176,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     
     /// Прапорець закінчення гри
     private(set) var isGameOver: Bool = false
+    private var gameOverOverlayNode: SKNode?
+    
+    // MARK: - Ad Rewards (Revive 1x, Double Coins 1x)
+    private var hasUsedAdRevive: Bool = false
+    private var hasUsedAdDoubleCoins: Bool = false
+    private var gameOverCoinsSummaryLabel: SKLabelNode?
+    private var gameOverDoubleCoinsBtn: SKSpriteNode?
+    private var gameOverDoubleCoinsLabel: SKLabelNode?
     
     // MARK: - Lives, Score & Difficulty
     private static let maxLives: Int = 3
@@ -195,54 +209,49 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var coinsLabel = SKLabelNode()
     private var hudCoinIcon: SKSpriteNode?
     
-    /// Рівень складності, що динамічно зростає кожні 40 очок (0, 1, 2, 3...)
+    /// Поточний розрахунковий рівень складності (кожні 50 очок)
     private var difficultyLevel: Int {
-        return score / 40
+        return score / 50
     }
     
-    /// Поточна швидкість підйому камери: постійно та безперервно зростає разом із набором очок
+    /// Поточна швидкість підйому камери: безперервне, плавне наростання темпу гри в стилі Subway Surfers.
+    /// Починається з бадьорого комфортного бігу (300 pt/s) і без жодних різких ривків
+    /// чи сходинок плавно прискорюється в міру забігу до спортивного максимуму (~645 pt/s).
     private var currentUpwardSpeed: CGFloat {
-        let continuousIncrease = CGFloat(score) * 0.40
-        return min(Config.maxUpwardSpeed, Config.baseUpwardSpeed + continuousIncrease)
+        let s = CGFloat(max(0, score))
+        let acceleration = 340.0 * (1.0 - exp(-s / 450.0)) + (s * 0.035)
+        return min(645.0, 300.0 + acceleration)
     }
     
-    /// Розміри розриву прірв залежно від набраних очок:
-    /// - Рівень 0 (0...39): 2...3 тайли (96...144 pt)
-    /// - Рівень 1 (40...79): 2...3 тайли (96...144 pt)
-    /// - Рівень 2 (80...119): 2...4 тайли (96...192 pt)
-    /// - Рівень 3+ (120+): 3...4 тайли (144...192 pt)
+    /// Розміри розриву прірв: плавний і природний розподіл без сходинкових стрибків.
+    /// Від легких 2 тайлів на старті до динамічних 4-5 тайлів на високих очках.
     private func randomAbyssGapTileCount() -> Int {
-        switch difficultyLevel {
-        case 0:
-            return Int.random(in: 2...3)
-        case 1:
-            return Int.random(in: 2...3)
-        case 2:
-            return Int.random(in: 2...4)
-        default:
-            return Int.random(in: 3...4)
+        let s = CGFloat(max(0, score))
+        let progress = min(1.0, s / 800.0)
+        let roll = Double.random(in: 0...1)
+        if progress < 0.25 {
+            // 0...200 очок: переважно 2 тайли (96 pt), іноді 3 тайли
+            return (roll < 0.80) ? 2 : 3
+        } else if progress < 0.60 {
+            // 200...480 очок: плавний перехід між 2, 3 та 4 тайлами
+            return (roll < 0.40) ? 2 : ((roll < 0.85) ? 3 : 4)
+        } else if progress < 0.90 {
+            // 480...720 очок: 3, 4 або 5 тайлів
+            return (roll < 0.30) ? 3 : ((roll < 0.80) ? 4 : 5)
+        } else {
+            // 720+ очок: максимальний паркур (4-5 тайлів, рідко 6)
+            return (roll < 0.35) ? 4 : ((roll < 0.85) ? 5 : 6)
         }
     }
     
-    /// Скорочення дистанції між прірвами з гарантією вільного простору для спавну мобів:
-    /// - 0...39: 460...580 pt
-    /// - 40...79: 380...480 pt
-    /// - 80...119: 320...400 pt
-    /// - 120...159: 280...350 pt
-    /// - 160+: 240...320 pt
+    /// Скорочення дистанції між прірвами (довжини твердих платформ):
+    /// Плавна неперервна експоненційна функція від ~560 pt на початку до ~115 pt на високих дистанціях.
+    /// Без різких «перепадів» довжини — платформи звужуються органічно, як у найкращих раннерах.
     private func randomAbyssDistance() -> CGFloat {
-        switch difficultyLevel {
-        case 0:
-            return CGFloat.random(in: 460.0...580.0)
-        case 1:
-            return CGFloat.random(in: 380.0...480.0)
-        case 2:
-            return CGFloat.random(in: 320.0...400.0)
-        case 3:
-            return CGFloat.random(in: 280.0...350.0)
-        default:
-            return CGFloat.random(in: 240.0...320.0)
-        }
+        let s = CGFloat(max(0, score))
+        let meanDistance = 115.0 + 445.0 * exp(-s / 420.0)
+        let spread = meanDistance * 0.14
+        return CGFloat.random(in: (meanDistance - spread)...(meanDistance + spread))
     }
     
     /// Значне скорочення появи сердець (додаткових життів):
@@ -276,8 +285,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var nextCoinPatternY: CGFloat = 0
     private var lastAbyssHitTime: TimeInterval = 0
     
-    // Процедурний спавн ворожих мобів (перший моб з'являється на відмітці 500-1000 очків)
+    // Процедурний спавн ворожих мобів (патрульні на розминці, стрільці пізніше)
     private var firstMobScoreThreshold: Int = 0
+    private var firstShooterScoreThreshold: Int = 0
     private var nextMobY: CGFloat = 0
     
     private var decorationNodes: [SKNode] = []
@@ -587,9 +597,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         updateHUD(animated: false)
         
         // 2. Лічильник очок праворуч зверху
-        scoreLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-        scoreLabel.text = "\(score)"
-        scoreLabel.fontSize = 24
+        scoreLabel = SKLabelNode(fontNamed: AppFont.name)
+        scoreLabel.text = score.formattedWithSeparator
+        scoreLabel.fontSize = 25
         scoreLabel.fontColor = .white
         scoreLabel.horizontalAlignmentMode = .right
         scoreLabel.verticalAlignmentMode = .center
@@ -605,9 +615,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         hudNode.addChild(coinIcon)
         self.hudCoinIcon = coinIcon
         
-        coinsLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-        coinsLabel.text = "\(coinsCollected)"
-        coinsLabel.fontSize = 17
+        coinsLabel = SKLabelNode(fontNamed: AppFont.name)
+        coinsLabel.text = coinsCollected.formattedWithSeparator
+        coinsLabel.fontSize = 18
         coinsLabel.fontColor = SKColor(red: 1.0, green: 0.86, blue: 0.28, alpha: 1.0)
         coinsLabel.horizontalAlignmentMode = .right
         coinsLabel.verticalAlignmentMode = .center
@@ -701,17 +711,17 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         banner.zPosition = 1
         titleContainer.addChild(banner)
         
-        let shadowLabel = SKLabelNode(fontNamed: "HelveticaNeue-CondensedBlack")
+        let shadowLabel = SKLabelNode(fontNamed: AppFont.name)
         shadowLabel.text = "WALLSHIFT"
-        shadowLabel.fontSize = min(44.0, size.width * 0.11)
+        shadowLabel.fontSize = min(46.0, size.width * 0.115)
         shadowLabel.fontColor = SKColor(red: 0.12, green: 0.05, blue: 0.02, alpha: 0.95)
         shadowLabel.position = CGPoint(x: 1.5, y: -bannerH * 0.08)
         shadowLabel.zPosition = 2
         titleContainer.addChild(shadowLabel)
         
-        let titleLabel = SKLabelNode(fontNamed: "HelveticaNeue-CondensedBlack")
+        let titleLabel = SKLabelNode(fontNamed: AppFont.name)
         titleLabel.text = "WALLSHIFT"
-        titleLabel.fontSize = min(44.0, size.width * 0.11)
+        titleLabel.fontSize = min(46.0, size.width * 0.115)
         titleLabel.fontColor = .white
         titleLabel.position = CGPoint(x: 0, y: -bannerH * 0.05)
         titleLabel.zPosition = 3
@@ -739,9 +749,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         starIcon.zPosition = 2
         card.addChild(starIcon)
         
-        let bestScoreText = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-        bestScoreText.text = "BEST: \(bestScore)"
-        bestScoreText.fontSize = 15.0
+        let bestScoreText = SKLabelNode(fontNamed: AppFont.name)
+        bestScoreText.text = "BEST: \(bestScore.formattedWithSeparator)"
+        bestScoreText.fontSize = 16.0
         bestScoreText.fontColor = SKColor(red: 0.22, green: 0.09, blue: 0.03, alpha: 1.0)
         bestScoreText.horizontalAlignmentMode = .left
         bestScoreText.verticalAlignmentMode = .center
@@ -755,9 +765,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         coinIcon.zPosition = 2
         card.addChild(coinIcon)
         
-        let coinsText = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-        coinsText.text = "\(totalCoins)"
-        coinsText.fontSize = 15.0
+        let coinsText = SKLabelNode(fontNamed: AppFont.name)
+        coinsText.text = totalCoins.formattedWithSeparator
+        coinsText.fontSize = 16.0
         coinsText.fontColor = SKColor(red: 0.22, green: 0.09, blue: 0.03, alpha: 1.0)
         coinsText.horizontalAlignmentMode = .left
         coinsText.verticalAlignmentMode = .center
@@ -783,10 +793,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         playArrow.zPosition = 2
         playBtn.addChild(playArrow)
         
-        let playLabel = SKLabelNode(fontNamed: "HelveticaNeue-CondensedBlack")
+        let playLabel = SKLabelNode(fontNamed: AppFont.name)
         playLabel.name = "menuPlayButton"
         playLabel.text = "START GAME"
-        playLabel.fontSize = 22.0
+        playLabel.fontSize = 23.0
         playLabel.fontColor = .white
         playLabel.verticalAlignmentMode = .center
         playLabel.horizontalAlignmentMode = .center
@@ -817,10 +827,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         shopIcon.zPosition = 2
         shopBtn.addChild(shopIcon)
         
-        let shopLabel = SKLabelNode(fontNamed: "HelveticaNeue-CondensedBlack")
+        let shopLabel = SKLabelNode(fontNamed: AppFont.name)
         shopLabel.name = "menuShopButton"
         shopLabel.text = "MARKET"
-        shopLabel.fontSize = 20.0
+        shopLabel.fontSize = 21.0
         shopLabel.fontColor = .white
         shopLabel.verticalAlignmentMode = .center
         shopLabel.horizontalAlignmentMode = .center
@@ -981,9 +991,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         banner.zPosition = 5
         card.addChild(banner)
         
-        let titleLabel = SKLabelNode(fontNamed: "HelveticaNeue-CondensedBlack")
+        let titleLabel = SKLabelNode(fontNamed: AppFont.name)
         titleLabel.text = "MARKET"
-        titleLabel.fontSize = 24.0
+        titleLabel.fontSize = 25.0
         titleLabel.fontColor = .white
         titleLabel.verticalAlignmentMode = .center
         titleLabel.position = CGPoint(x: 0, y: -bannerH * 0.05)
@@ -1013,18 +1023,23 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         card.addChild(balanceNode)
         
         let coinIcon = SKSpriteNode(imageNamed: "gui_icon_coin")
+        coinIcon.name = "shopCoinIcon"
         coinIcon.size = CGSize(width: 24.0, height: 24.0)
-        coinIcon.position = CGPoint(x: -28.0, y: 0)
-        balanceNode.addChild(coinIcon)
         
-        let balanceLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        let balanceLabel = SKLabelNode(fontNamed: AppFont.name)
         balanceLabel.name = "shopBalanceLabel"
-        balanceLabel.text = "\(totalCoins)"
-        balanceLabel.fontSize = 20.0
+        balanceLabel.text = totalCoins.formattedWithSeparator
+        balanceLabel.fontSize = 21.0
         balanceLabel.fontColor = SKColor(red: 1.0, green: 0.88, blue: 0.30, alpha: 1.0)
         balanceLabel.horizontalAlignmentMode = .left
         balanceLabel.verticalAlignmentMode = .center
-        balanceLabel.position = CGPoint(x: -12.0, y: 0)
+        
+        let balSpacing: CGFloat = 8.0
+        let totalBalW = coinIcon.size.width + balSpacing + balanceLabel.frame.width
+        coinIcon.position = CGPoint(x: -totalBalW / 2.0 + coinIcon.size.width / 2.0, y: 0)
+        balanceLabel.position = CGPoint(x: coinIcon.position.x + coinIcon.size.width / 2.0 + balSpacing, y: 0)
+        
+        balanceNode.addChild(coinIcon)
         balanceNode.addChild(balanceLabel)
         
         // 6. Стрілки перемикання ліворуч / праворуч
@@ -1080,8 +1095,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         content.removeAllChildren()
         
         // Оновлюємо лічильник балансу
-        if let balance = card.childNode(withName: "shopBalanceNode")?.childNode(withName: "shopBalanceLabel") as? SKLabelNode {
-            balance.text = "\(totalCoins)"
+        if let balance = card.childNode(withName: "shopBalanceNode")?.childNode(withName: "shopBalanceLabel") as? SKLabelNode,
+           let coin = card.childNode(withName: "shopBalanceNode")?.childNode(withName: "shopCoinIcon") as? SKSpriteNode {
+            balance.text = totalCoins.formattedWithSeparator
+            let balSpacing: CGFloat = 8.0
+            let totalW = coin.size.width + balSpacing + balance.frame.width
+            coin.position = CGPoint(x: -totalW / 2.0 + coin.size.width / 2.0, y: 0)
+            balance.position = CGPoint(x: coin.position.x + coin.size.width / 2.0 + balSpacing, y: 0)
         }
         
         let themes = ThemeManager.shared.themes
@@ -1122,25 +1142,27 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             avatarBg.addChild(badge)
         } else if !isUnlocked {
             let lock = SKSpriteNode(imageNamed: "gui_icon_lock")
-            lock.size = CGSize(width: 26.0, height: 26.0)
+            let lockH: CGFloat = 27.0
+            let lockW: CGFloat = lockH * (130.0 / 164.0)
+            lock.size = CGSize(width: lockW, height: lockH)
             lock.position = CGPoint(x: 52.0, y: 52.0)
             lock.zPosition = 5
             avatarBg.addChild(lock)
         }
         
         // Б. Назва теми
-        let titleLabel = SKLabelNode(fontNamed: "HelveticaNeue-CondensedBlack")
+        let titleLabel = SKLabelNode(fontNamed: AppFont.name)
         titleLabel.text = theme.name
-        titleLabel.fontSize = 17.0
+        titleLabel.fontSize = 18.0
         titleLabel.fontColor = .white
         titleLabel.position = CGPoint(x: 0, y: -cardH * 0.14)
         titleLabel.zPosition = 2
         content.addChild(titleLabel)
         
         // В. Опис характеристик
-        let subtitleLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
+        let subtitleLabel = SKLabelNode(fontNamed: AppFont.name)
         subtitleLabel.text = theme.subtitle
-        subtitleLabel.fontSize = 12.0
+        subtitleLabel.fontSize = 13.0
         subtitleLabel.fontColor = SKColor(red: 0.95, green: 0.90, blue: 0.80, alpha: 0.90)
         subtitleLabel.position = CGPoint(x: 0, y: -cardH * 0.20)
         subtitleLabel.zPosition = 2
@@ -1185,7 +1207,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             checkIcon.zPosition = 3
             btnBg.addChild(checkIcon)
             
-            let label = SKLabelNode(fontNamed: "HelveticaNeue-CondensedBlack")
+            let label = SKLabelNode(fontNamed: AppFont.name)
             label.name = "shopActionButton"
             label.text = "SELECTED"
             label.fontSize = 20.0
@@ -1201,7 +1223,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             btnBg.zPosition = 1
             actionBtnNode.addChild(btnBg)
             
-            let label = SKLabelNode(fontNamed: "HelveticaNeue-CondensedBlack")
+            let label = SKLabelNode(fontNamed: AppFont.name)
             label.name = "shopActionButton"
             label.text = "SELECT"
             label.fontSize = 20.0
@@ -1212,28 +1234,41 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             btnBg.addChild(label)
         } else {
             // Заблокована тема — покупка
-            let btnBg = SKSpriteNode(imageNamed: canAfford ? "gui_btn_large_orange" : "gui_btn_exit_orange")
+            let btnBg = SKSpriteNode(imageNamed: "gui_btn_large_orange")
             btnBg.name = "shopActionButton"
             btnBg.size = CGSize(width: btnW, height: btnH)
-            btnBg.alpha = canAfford ? 1.0 : 0.75
+            btnBg.alpha = canAfford ? 1.0 : 0.65
+            if !canAfford {
+                btnBg.color = .darkGray
+                btnBg.colorBlendFactor = 0.35
+            }
             btnBg.zPosition = 1
             actionBtnNode.addChild(btnBg)
             
             let coin = SKSpriteNode(imageNamed: "gui_icon_coin")
             coin.name = "shopActionButton"
-            coin.size = CGSize(width: 22.0, height: 22.0)
-            coin.position = CGPoint(x: -btnW * 0.28, y: 1.0)
+            coin.size = CGSize(width: 20.0, height: 20.0)
             coin.zPosition = 3
-            btnBg.addChild(coin)
             
-            let label = SKLabelNode(fontNamed: "HelveticaNeue-CondensedBlack")
+            let label = SKLabelNode(fontNamed: AppFont.name)
             label.name = "shopActionButton"
-            label.text = canAfford ? "BUY (\(theme.price))" : "\(theme.price) (NOT ENOUGH)"
-            label.fontSize = canAfford ? 18.0 : 15.0
-            label.fontColor = .white
+            let formattedPrice = theme.price.formattedWithSeparator
+            label.text = canAfford ? "BUY (\(formattedPrice))" : "\(formattedPrice) (NOT ENOUGH)"
+            label.fontSize = canAfford ? 18.0 : 14.5
+            label.fontColor = canAfford ? .white : SKColor(white: 0.95, alpha: 1.0)
             label.verticalAlignmentMode = .center
-            label.position = CGPoint(x: 12.0, y: 1.0)
             label.zPosition = 3
+            
+            // Динамічне центроване розміщення: монетка + гарантований відступ + текст (наїзд неможливий)
+            let spacing: CGFloat = 8.0
+            let totalContentW = coin.size.width + spacing + label.frame.width
+            let startX = -totalContentW / 2.0
+            
+            coin.position = CGPoint(x: startX + (coin.size.width / 2.0), y: 1.0)
+            label.horizontalAlignmentMode = .left
+            label.position = CGPoint(x: startX + coin.size.width + spacing, y: 1.0)
+            
+            btnBg.addChild(coin)
             btnBg.addChild(label)
         }
     }
@@ -1258,7 +1293,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     
     /// Оновлення лічильника монет у меню після покупок
     private func updateMenuCoinsDisplay() {
-        menuCoinsText?.text = "\(totalCoins)"
+        menuCoinsText?.text = totalCoins.formattedWithSeparator
     }
     
     /// Миттєве застосування поточної теми до сцени (персонаж, стіни, фон)
@@ -1373,12 +1408,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         trackHeartNodes.removeAll()
         nextHeartY = player.position.y + 7000.0
         
-        // Ворожі моби: перший моб з'являється значно раніше (на 60-120 очках)
+        // Ворожі моби: простий моб (патрульний) з'являється плавно на 60-90 очках,
+        // а стрільці розблоковуються помітно пізніше (210-260 очок)
         trackMobNodes.removeAll()
         activeFireArrows.forEach { $0.removeFromParent() }
         activeFireArrows.removeAll()
         consecutivePatrollers = 0
-        firstMobScoreThreshold = Int.random(in: 60...120)
+        firstMobScoreThreshold = Int.random(in: 60...90)
+        firstShooterScoreThreshold = Int.random(in: 210...260)
         nextMobY = startCameraY + (CGFloat(firstMobScoreThreshold) * Config.distancePerScorePoint)
         
         // Золотисті монети: перша група монет з'являється вже на початку підйому (~250 pt)
@@ -1872,44 +1909,35 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         trackHeartNodes.append(heart)
     }
     
-    /// Інтервал між спавнами ворожих мобів, що скорочується з ускладненням гри:
-    /// Чим більше очок / вищий рівень складності — тим частіше з'являються патрулюючі та стріляючі моби.
+    /// Інтервал між спавнами ворожих мобів у стилі Subway Surfers:
+    /// Безперервна експоненційна функція, що плавно та органічно скорочує дистанцію між ворогами.
+    /// Повністю відсутні дискретні стрибки густоти мобів.
     private func randomMobDistance() -> CGFloat {
-        switch difficultyLevel {
-        case 0...1:
-            // 0...79 очок: плавне введення перших мобів (~30...42 очки між мобами)
-            return CGFloat.random(in: 750.0...1050.0)
-        case 2...4:
-            // 80...199 очок (~19...30 очок між мобами)
-            return CGFloat.random(in: 480.0...750.0)
-        case 5...8:
-            // 200...359 очок (~13...20 очок між мобами)
-            return CGFloat.random(in: 320.0...500.0)
-        default:
-            // 360+ очок: інтенсивний динамічний спавн (~8...14 очок між мобами)
-            return CGFloat.random(in: 200.0...340.0)
-        }
+        let s = CGFloat(max(0, score))
+        let meanDistance = 160.0 + 640.0 * exp(-s / 380.0)
+        let spread = meanDistance * 0.15
+        return CGFloat.random(in: (meanDistance - spread)...(meanDistance + spread))
     }
     
-    /// Перевірка умов безпеки та чесності спавну моба ("повністю рандомно, але так щоб реально було грати"):
-    /// 1. Стіна, де рухається моб, повинна бути суцільною на всій ділянці патруля (без прірв).
-    /// 2. Протилежна стіна обов'язково безпечна для ухилення гравця навпроти ділянки патруля.
-    /// 3. Відсутність накладання на інших активних мобів (безпечна дистанція).
+    /// Перевірка умов безпеки та чесності спавну моба:
+    /// 1. Стіна, де рухається моб, суцільна на ділянці патруля (з невеликим запасом).
+    /// 2. Протилежна стіна має безпечну ділянку для ухилення стрибком.
+    /// 3. Відсутність накладання на інших активних мобів.
     private func canSpawnMob(onLeftWall: Bool, startY: CGFloat, endY: CGFloat) -> Bool {
         // 1. Власна стіна моба суцільна на ділянці патруля
-        guard isWallRangeSolid(onLeftWall: onLeftWall, minY: startY, maxY: endY, safetyMargin: 25.0) else {
+        guard isWallRangeSolid(onLeftWall: onLeftWall, minY: startY, maxY: endY, safetyMargin: 15.0) else {
             return false
         }
         
-        // 2. Протилежна стіна обов'язково безпечна для комфортного ухилення стрибком
-        guard isWallRangeSolid(onLeftWall: !onLeftWall, minY: startY - 40.0, maxY: endY + 60.0, safetyMargin: 30.0) else {
+        // 2. Протилежна стіна має тверду поверхню навпроти зони контакту
+        guard isWallRangeSolid(onLeftWall: !onLeftWall, minY: startY - 10.0, maxY: endY + 20.0, safetyMargin: 10.0) else {
             return false
         }
         
         // 3. Дистанція до інших мобів (щоб уникнути непрохідних скупчень)
         for mob in trackMobNodes {
             let sameWall = (mob.isOnLeftWall == onLeftWall)
-            let buffer: CGFloat = sameWall ? 120.0 : 70.0
+            let buffer: CGFloat = sameWall ? 90.0 : 50.0
             let mobMin = mob.pointAY - buffer
             let mobMax = mob.pointBY + buffer
             if startY <= mobMax && endY >= mobMin {
@@ -1922,9 +1950,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     
     /// Спроба процедурного спавну моба на основі поточної висоти каньйону
     private func trySpawnMob(candidateY: CGFloat) {
-        // Довжина маршруту патрулювання від точки А до точки Б (80...130 pt)
-        let patrolDistance = CGFloat.random(in: 80.0...130.0)
-        let patrolSpeed = CGFloat.random(in: 60.0...85.0) + min(35.0, CGFloat(difficultyLevel) * 3.5)
+        // Плавна адаптація патрулювання без дискретних сходинок у стилі Subway Surfers:
+        // довжина і швидкість мобів змінюються плавно в міру зростання дистанції
+        let patrolProgress = min(1.0, CGFloat(max(0, score)) / 750.0)
+        let maxPatrol: CGFloat = 120.0 - (patrolProgress * 55.0) // 120 -> 65 pt
+        let minPatrol: CGFloat = 50.0 - (patrolProgress * 15.0)  // 50 -> 35 pt
+        let patrolDistance = CGFloat.random(in: minPatrol...maxPatrol)
+        let patrolSpeed = CGFloat.random(in: 60.0...85.0) + (patrolProgress * 65.0)
         let endY = candidateY + patrolDistance
         
         // Випадковий вибір стіни для патрулювання
@@ -1932,20 +1964,22 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         var targetSide: Bool?
         var finalEndY = endY
         
-        // Вибір бажаного типу моба: звичайний патрульний або моб-стрілець
+        // Збалансована поява мобів-стрільців:
+        // 1. Прості моби з'являються першими (на розминці).
+        // 2. Моби-стрільці з'являються помітно пізніше (score >= firstShooterScoreThreshold ~210-260).
+        // 3. Шанс стрільця плавно зростає від 18% до 45% без різких стрибків.
+        // 4. Не спавнимо стрільців поспіль (завжди чергуємо з простими мобами до високих очок).
         let shooterChance: Double
-        switch difficultyLevel {
-        case 0...2:
-            shooterChance = 0.40 // Початкові рівні: 40% стрільців
-        case 3...5:
-            shooterChance = 0.55
-        default:
-            shooterChance = 0.70 // Високі рівні: 70% стрільців
+        if score < firstShooterScoreThreshold {
+            shooterChance = 0.0
+        } else if consecutivePatrollers < 1 && score < 600 {
+            shooterChance = 0.0
+        } else {
+            let progress = min(1.0, Double(score - firstShooterScoreThreshold) / 500.0)
+            shooterChance = 0.18 + (progress * 0.27)
         }
         
-        // Якщо було 2 патрульних поспіль — гарантуємо появу стрільця для динаміки
-        let forceShooter = consecutivePatrollers >= 2
-        let wantsShooter = forceShooter || (Double.random(in: 0...1) < shooterChance)
+        let wantsShooter = (Double.random(in: 0...1) < shooterChance)
         let finalMobType: MobNode.MobType = wantsShooter ? .shooter : .patroller
         
         // Перевіряємо стіни: спочатку повна дистанція патруля
@@ -1957,7 +1991,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             finalEndY = endY
         } else {
             // Якщо повна дистанція не вмістилася між прірвами, перевіряємо компактний патруль
-            let compactEndY = candidateY + 75.0
+            let compactEndY = candidateY + 40.0
             if canSpawnMob(onLeftWall: preferredLeft, startY: candidateY, endY: compactEndY) {
                 targetSide = preferredLeft
                 finalEndY = compactEndY
@@ -2012,14 +2046,17 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             nextMobY = max(candidateY, currentLeftY) + randomMobDistance()
         } else {
             // Якщо зараз на обох стінах у цій точці прірва, пробуємо трохи вище без відставання від стін
-            nextMobY = max(candidateY + 80.0, currentLeftY + 40.0)
+            nextMobY = max(candidateY + 50.0, currentLeftY + 30.0)
         }
     }
     
     /// Створення та додавання у сцену снаряду (вогняна або водяна стріла), випущеного мобом-стрільцем
     private func spawnFireArrow(from startPos: CGPoint, towards targetPos: CGPoint, projectileType: ProjectileType = .fire) {
         guard !isGameOver, !isPlayerFalling else { return }
-        let arrow = FireArrowNode(from: startPos, towards: targetPos, projectileType: projectileType)
+        // Швидкість польоту снаряду динамічно адаптується під швидкість руху гри,
+        // щоб на високих швидкостях стріли залишалися блискавичними та спортивними
+        let arrowSpeed = max(250.0, currentUpwardSpeed * 0.90)
+        let arrow = FireArrowNode(from: startPos, towards: targetPos, projectileType: projectileType, speed: arrowSpeed)
         addChild(arrow)
         activeFireArrows.append(arrow)
     }
@@ -2255,19 +2292,27 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // 3. Якщо гра закінчена, перевіряємо натискання на кнопки оверлею
         if gameState == .gameOver || isGameOver {
-            gameOverAudioPlayer?.stop()
             let touchedNodes = cameraNode.nodes(at: locInCamera)
             for node in touchedNodes {
+                if node.name == "adReviveButton" || node.parent?.name == "adReviveButton" {
+                    handleAdReviveTapped()
+                    return
+                }
+                if node.name == "adDoubleCoinsButton" || node.parent?.name == "adDoubleCoinsButton" {
+                    handleAdDoubleCoinsTapped()
+                    return
+                }
                 if node.name == "menuButton" || node.parent?.name == "menuButton" {
+                    gameOverAudioPlayer?.stop()
                     goToMainMenu()
                     return
                 }
                 if node.name == "retryButton" || node.parent?.name == "retryButton" {
+                    gameOverAudioPlayer?.stop()
                     restartGame()
                     return
                 }
             }
-            restartGame()
             return
         }
         
@@ -2323,23 +2368,31 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             let newScore = Int(climbed / Config.distancePerScorePoint)
             if newScore != score {
                 score = newScore
-                scoreLabel.text = "\(score)"
+                scoreLabel.text = score.formattedWithSeparator
                 
-                // Перевіряємо кожні 100 очок для сповіщення про новий рівень складності
-                let currentLevel = difficultyLevel
-                if currentLevel > lastLevelCelebrated && currentLevel > 0 {
-                    lastLevelCelebrated = currentLevel
-                    celebrateLevelUp(level: currentLevel)
+                // Сповіщення про проходження ювілейних відміток (кожні 100 очок)
+                let milestone = score / 100
+                if milestone > lastLevelCelebrated && milestone > 0 {
+                    lastLevelCelebrated = milestone
+                    celebrateLevelUp(level: milestone)
                 }
             }
             
-            // Оновлення та активація стрільби ворожих мобів-стрільців при наближенні гравця
+            // Оновлення та активація стрільби ворожих мобів-стрільців при наближенні гравця.
+            // Перевіряємо, чи має гравець безпечну стіну для стрибка-ухилення (без прірви навпроти).
+            let oppositeWallHasAbyss = hasAbyssOnWall(isLeft: !player.isOnLeftWall, nearY: player.position.y, range: 75.0)
+            let isDodgeSafe = !oppositeWallHasAbyss
+            let canDoubleShot = score >= 500
+            
             for mob in trackMobNodes {
                 mob.updateShooting(
                     playerPosition: player.position,
                     playerIsOnLeftWall: player.isOnLeftWall,
                     playerIsJumping: player.isJumping,
-                    currentTime: currentTime
+                    currentTime: currentTime,
+                    isDodgeSafe: isDodgeSafe,
+                    canDoubleShot: canDoubleShot,
+                    gameSpeed: currentUpwardSpeed
                 )
             }
             
@@ -2355,6 +2408,22 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // Безперервне поповнення доріжки наперед та очищення старих тайлів позаду
         buildTrack(upTo: cameraNode.position.y + (size.height * 1.5))
         cleanupPassedTrack()
+    }
+    
+    /// Перевіряє, чи є розрив стіни (прірва) у вказаному діапазоні висоти
+    private func hasAbyssOnWall(isLeft: Bool, nearY: CGFloat, range: CGFloat = 80.0) -> Bool {
+        let trackNodes = isLeft ? leftTrackNodes : rightTrackNodes
+        for node in trackNodes {
+            if let abyss = node as? AbyssObstacleNode {
+                let halfH = abyss.gapHeight / 2.0
+                let minY = abyss.position.y - halfH - range
+                let maxY = abyss.position.y + halfH + range
+                if nearY >= minY && nearY <= maxY {
+                    return true
+                }
+            }
+        }
+        return false
     }
     
     /// Перевіряє, чи знаходиться гравець безпосередньо над прірвою (в розриві стіни)
@@ -2548,6 +2617,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func handleArrowHit(arrow: FireArrowNode) {
         guard !player.isInvulnerable, !isGameOver, !isPlayerFalling else { return }
         
+        // Якщо герой у цей момент перебуває у стрибку між стінами — це успішне ухилення!
+        // Стріла розсіюється, не завдаючи шкоди герою.
+        if player.isJumping {
+            arrow.explodeAndRemove()
+            return
+        }
+        
         arrow.explodeAndRemove()
         currentLives -= 1
         updateHUD()
@@ -2604,7 +2680,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         playCoinSound()
         
         // Оновлюємо лічильник монет у HUD
-        coinsLabel.text = "\(coinsCollected)"
+        coinsLabel.text = coinsCollected.formattedWithSeparator
         
         // Пружний сплеск іконки монети в HUD
         hudCoinIcon?.removeAction(forKey: "coinPulse")
@@ -2734,6 +2810,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         let container = SKNode()
         container.zPosition = 100
+        gameOverOverlayNode = container
         
         // Затемнюючий фон оверлею
         let bgDim = SKShapeNode(rectOf: CGSize(width: size.width, height: size.height))
@@ -2745,10 +2822,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // Головна діалогова картка (Box_Rounded)
         let dialogW = min(320.0, size.width - 40.0)
-        let dialogH: CGFloat = 370.0
+        let dialogH: CGFloat = 430.0
         let dialogCard = SKSpriteNode(imageNamed: "gui_card_box")
         dialogCard.size = CGSize(width: dialogW, height: dialogH)
-        dialogCard.position = CGPoint(x: 0, y: 10.0)
+        dialogCard.position = CGPoint(x: 0, y: 15.0)
         dialogCard.zPosition = 2
         container.addChild(dialogCard)
         
@@ -2761,36 +2838,36 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         redBanner.zPosition = 3
         dialogCard.addChild(redBanner)
         
-        let titleShadow = SKLabelNode(fontNamed: "HelveticaNeue-CondensedBlack")
+        let titleShadow = SKLabelNode(fontNamed: AppFont.name)
         titleShadow.text = "GAME OVER"
-        titleShadow.fontSize = 28.0
+        titleShadow.fontSize = 30.0
         titleShadow.fontColor = SKColor(red: 0.20, green: 0.04, blue: 0.04, alpha: 0.95)
         titleShadow.position = CGPoint(x: 1.5, y: -bannerH * 0.09)
         titleShadow.zPosition = 4
         redBanner.addChild(titleShadow)
         
-        let titleLabel = SKLabelNode(fontNamed: "HelveticaNeue-CondensedBlack")
+        let titleLabel = SKLabelNode(fontNamed: AppFont.name)
         titleLabel.text = "GAME OVER"
-        titleLabel.fontSize = 28.0
+        titleLabel.fontSize = 30.0
         titleLabel.fontColor = .white
         titleLabel.position = CGPoint(x: 0, y: -bannerH * 0.06)
         titleLabel.zPosition = 5
         redBanner.addChild(titleLabel)
         
-        let reasonLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
+        let reasonLabel = SKLabelNode(fontNamed: AppFont.name)
         reasonLabel.text = subtitle
-        reasonLabel.fontSize = 14.0
+        reasonLabel.fontSize = 15.0
         reasonLabel.fontColor = SKColor(red: 0.95, green: 0.70, blue: 0.70, alpha: 1.0)
-        reasonLabel.position = CGPoint(x: 0, y: 78.0)
+        reasonLabel.position = CGPoint(x: 0, y: 104.0)
         reasonLabel.zPosition = 3
         dialogCard.addChild(reasonLabel)
         
         // Картка результатів (ButtonText_Orange_TextField)
         let statsW = dialogW - 40.0
-        let statsH: CGFloat = 70.0
+        let statsH: CGFloat = 68.0
         let statsBar = SKSpriteNode(imageNamed: "gui_bar_orange")
         statsBar.size = CGSize(width: statsW, height: statsH)
-        statsBar.position = CGPoint(x: 0, y: 18.0)
+        statsBar.position = CGPoint(x: 0, y: 44.0)
         statsBar.zPosition = 3
         dialogCard.addChild(statsBar)
         
@@ -2800,9 +2877,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         star.zPosition = 4
         statsBar.addChild(star)
         
-        let scoreSummary = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-        scoreSummary.text = "SCORE: \(score)   BEST: \(bestScore)"
-        scoreSummary.fontSize = 15.0
+        let scoreSummary = SKLabelNode(fontNamed: AppFont.name)
+        scoreSummary.text = "SCORE: \(score.formattedWithSeparator)   BEST: \(bestScore.formattedWithSeparator)"
+        scoreSummary.fontSize = 15.5
         scoreSummary.fontColor = SKColor(red: 0.22, green: 0.09, blue: 0.03, alpha: 1.0)
         scoreSummary.horizontalAlignmentMode = .left
         scoreSummary.verticalAlignmentMode = .center
@@ -2816,34 +2893,103 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         coin.zPosition = 4
         statsBar.addChild(coin)
         
-        let coinsSummary = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-        coinsSummary.text = "COINS: +\(coinsCollected)   TOTAL: \(totalCoins)"
-        coinsSummary.fontSize = 14.0
+        let coinsSummary = SKLabelNode(fontNamed: AppFont.name)
+        coinsSummary.text = "COINS: +\(coinsCollected.formattedWithSeparator)   TOTAL: \(totalCoins.formattedWithSeparator)"
+        coinsSummary.fontSize = 14.5
         coinsSummary.fontColor = SKColor(red: 0.22, green: 0.09, blue: 0.03, alpha: 1.0)
         coinsSummary.horizontalAlignmentMode = .left
         coinsSummary.verticalAlignmentMode = .center
         coinsSummary.position = CGPoint(x: -statsW * 0.28, y: -14.0)
         coinsSummary.zPosition = 4
         statsBar.addChild(coinsSummary)
+        self.gameOverCoinsSummaryLabel = coinsSummary
+        self.gameOverDoubleCoinsBtn = nil
+        self.gameOverDoubleCoinsLabel = nil
         
-        // Кнопка PLAY AGAIN (ButtonText_Large_Orange_Round)
+        let hasAdButton = !hasUsedAdRevive || (coinsCollected > 0 || hasUsedAdDoubleCoins)
+        let retryBtnY: CGFloat = hasAdButton ? -86.0 : -42.0
+        let menuBtnY: CGFloat = hasAdButton ? -144.0 : -104.0
+        
+        // Кнопка 1: Рекламна нагорода (1-й раз: REVIVE, 2-й раз: DOUBLE COINS 2X)
+        if !hasUsedAdRevive {
+            // Перший випадок: відродження з 1 життям за перегляд Unity Ads
+            let reviveBtnW = dialogW - 50.0
+            let reviveBtnH: CGFloat = 52.0
+            let reviveBtn = SKSpriteNode(imageNamed: "gui_btn_large_green")
+            reviveBtn.name = "adReviveButton"
+            reviveBtn.size = CGSize(width: reviveBtnW, height: reviveBtnH)
+            reviveBtn.position = CGPoint(x: 0, y: -26.0)
+            reviveBtn.zPosition = 3
+            dialogCard.addChild(reviveBtn)
+            
+            let heartIcon = SKSpriteNode(imageNamed: "life_hearth")
+            heartIcon.name = "adReviveButton"
+            heartIcon.size = CGSize(width: 22.0, height: 22.0)
+            heartIcon.position = CGPoint(x: -reviveBtnW * 0.30, y: 0)
+            heartIcon.zPosition = 4
+            reviveBtn.addChild(heartIcon)
+            
+            let reviveLabel = SKLabelNode(fontNamed: AppFont.name)
+            reviveLabel.name = "adReviveButton"
+            reviveLabel.text = "REVIVE (+1 LIFE)"
+            reviveLabel.fontSize = 17.0
+            reviveLabel.fontColor = .white
+            reviveLabel.verticalAlignmentMode = .center
+            reviveLabel.horizontalAlignmentMode = .center
+            reviveLabel.position = CGPoint(x: 12.0, y: 0)
+            reviveLabel.zPosition = 4
+            reviveBtn.addChild(reviveLabel)
+        } else if coinsCollected > 0 || hasUsedAdDoubleCoins {
+            // Другий випадок: подвоєння зібраних за забіг монет (x2)
+            let doubleBtnW = dialogW - 50.0
+            let doubleBtnH: CGFloat = 52.0
+            let doubleBtn = SKSpriteNode(imageNamed: hasUsedAdDoubleCoins ? "gui_btn_large_orange" : "gui_btn_large_green")
+            doubleBtn.name = hasUsedAdDoubleCoins ? "adDoubleCoinsClaimed" : "adDoubleCoinsButton"
+            doubleBtn.size = CGSize(width: doubleBtnW, height: doubleBtnH)
+            doubleBtn.position = CGPoint(x: 0, y: -26.0)
+            doubleBtn.zPosition = 3
+            doubleBtn.alpha = hasUsedAdDoubleCoins ? 0.65 : 1.0
+            dialogCard.addChild(doubleBtn)
+            self.gameOverDoubleCoinsBtn = doubleBtn
+            
+            let coinIcon = SKSpriteNode(imageNamed: "gui_icon_coin")
+            coinIcon.name = doubleBtn.name
+            coinIcon.size = CGSize(width: 22.0, height: 22.0)
+            coinIcon.position = CGPoint(x: -doubleBtnW * 0.30, y: 0)
+            coinIcon.zPosition = 4
+            doubleBtn.addChild(coinIcon)
+            
+            let doubleLabel = SKLabelNode(fontNamed: AppFont.name)
+            doubleLabel.name = doubleBtn.name
+            doubleLabel.text = hasUsedAdDoubleCoins ? "COINS DOUBLED (2X)!" : "DOUBLE COINS (2X)"
+            doubleLabel.fontSize = 17.0
+            doubleLabel.fontColor = .white
+            doubleLabel.verticalAlignmentMode = .center
+            doubleLabel.horizontalAlignmentMode = .center
+            doubleLabel.position = CGPoint(x: 12.0, y: 0)
+            doubleLabel.zPosition = 4
+            doubleBtn.addChild(doubleLabel)
+            self.gameOverDoubleCoinsLabel = doubleLabel
+        }
+        
+        // Кнопка 2: PLAY AGAIN (ButtonText_Large_Orange_Round)
         let retryBtnW = dialogW - 50.0
-        let retryBtnH: CGFloat = 56.0
+        let retryBtnH: CGFloat = 50.0
         let retryBtn = SKSpriteNode(imageNamed: "gui_btn_large_orange")
         retryBtn.name = "retryButton"
         retryBtn.size = CGSize(width: retryBtnW, height: retryBtnH)
-        retryBtn.position = CGPoint(x: 0, y: -54.0)
+        retryBtn.position = CGPoint(x: 0, y: retryBtnY)
         retryBtn.zPosition = 3
         dialogCard.addChild(retryBtn)
         
         let retryIcon = SKSpriteNode(imageNamed: "gui_icon_restart")
         retryIcon.name = "retryButton"
-        retryIcon.size = CGSize(width: 22.0, height: 22.0)
+        retryIcon.size = CGSize(width: 20.0, height: 20.0)
         retryIcon.position = CGPoint(x: -retryBtnW * 0.28, y: 0)
         retryIcon.zPosition = 4
         retryBtn.addChild(retryIcon)
         
-        let retryLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        let retryLabel = SKLabelNode(fontNamed: AppFont.name)
         retryLabel.name = "retryButton"
         retryLabel.text = "PLAY AGAIN"
         retryLabel.fontSize = 17.0
@@ -2854,27 +3000,27 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         retryLabel.zPosition = 4
         retryBtn.addChild(retryLabel)
         
-        // Кнопка MAIN MENU (ButtonText_Small_Blue_Round)
-        let menuBtnW = dialogW - 70.0
-        let menuBtnH: CGFloat = 48.0
+        // Кнопка 3: MAIN MENU (ButtonText_Small_Blue_Round)
+        let menuBtnW = dialogW - 64.0
+        let menuBtnH: CGFloat = 46.0
         let menuBtn = SKSpriteNode(imageNamed: "gui_btn_small_blue")
         menuBtn.name = "menuButton"
         menuBtn.size = CGSize(width: menuBtnW, height: menuBtnH)
-        menuBtn.position = CGPoint(x: 0, y: -120.0)
+        menuBtn.position = CGPoint(x: 0, y: menuBtnY)
         menuBtn.zPosition = 3
         dialogCard.addChild(menuBtn)
         
         let homeIcon = SKSpriteNode(imageNamed: "gui_icon_home")
         homeIcon.name = "menuButton"
-        homeIcon.size = CGSize(width: 20.0, height: 20.0)
+        homeIcon.size = CGSize(width: 18.0, height: 18.0)
         homeIcon.position = CGPoint(x: -menuBtnW * 0.26, y: 0)
         homeIcon.zPosition = 4
         menuBtn.addChild(homeIcon)
         
-        let menuLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        let menuLabel = SKLabelNode(fontNamed: AppFont.name)
         menuLabel.name = "menuButton"
         menuLabel.text = "MAIN MENU"
-        menuLabel.fontSize = 15.0
+        menuLabel.fontSize = 16.0
         menuLabel.fontColor = .white
         menuLabel.verticalAlignmentMode = .center
         menuLabel.horizontalAlignmentMode = .center
@@ -2886,7 +3032,117 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         cameraNode.addChild(container)
     }
     
+    /// Обробка натискання кнопки перегляду реклами Unity Ads для відродження (1-й раз)
+    private func handleAdReviveTapped() {
+        guard isGameOver, !hasUsedAdRevive else { return }
+        guard let vc = view?.window?.rootViewController ?? view?.next as? UIViewController else { return }
+        
+        UnityAdsManager.shared.showRewardedAd(from: vc) { [weak self] in
+            guard let self = self else { return }
+            self.hasUsedAdRevive = true
+            self.revivePlayerWithOneHeart()
+        } onFailed: { message in
+            print("[GameScene] Revive ad was not completed: \(message)")
+        }
+    }
+    
+    /// Обробка натискання кнопки перегляду реклами Unity Ads для подвоєння монет (2-й раз)
+    private func handleAdDoubleCoinsTapped() {
+        guard isGameOver, hasUsedAdRevive, !hasUsedAdDoubleCoins, coinsCollected > 0 else { return }
+        guard let vc = view?.window?.rootViewController ?? view?.next as? UIViewController else { return }
+        
+        UnityAdsManager.shared.showRewardedAd(from: vc) { [weak self] in
+            guard let self = self else { return }
+            self.doubleCollectedCoins()
+        } onFailed: { message in
+            print("[GameScene] Double coins ad was not completed: \(message)")
+        }
+    }
+    
+    /// Подвоєння зібраних за забіг монет після перегляду реклами
+    private func doubleCollectedCoins() {
+        guard !hasUsedAdDoubleCoins, coinsCollected > 0 else { return }
+        hasUsedAdDoubleCoins = true
+        
+        // Додаємо бонусні монети до загального балансу
+        let bonus = coinsCollected
+        totalCoins += bonus
+        coinsCollected *= 2
+        
+        // Оновлюємо підсумок на оверлеї
+        gameOverCoinsSummaryLabel?.text = "COINS: +\(coinsCollected.formattedWithSeparator) (2X!)   TOTAL: \(totalCoins.formattedWithSeparator)"
+        
+        // Переводимо кнопку у деактивований стан отриманої нагороди
+        gameOverDoubleCoinsBtn?.name = "adDoubleCoinsClaimed"
+        gameOverDoubleCoinsBtn?.alpha = 0.65
+        gameOverDoubleCoinsLabel?.name = "adDoubleCoinsClaimed"
+        gameOverDoubleCoinsLabel?.text = "COINS DOUBLED (2X)!"
+        
+        // Звуковий ефект нарахування монет
+        playCoinSound()
+    }
+    
+    /// Відродження персонажа з 1 серцем та повернення до гри
+    private func revivePlayerWithOneHeart() {
+        gameOverAudioPlayer?.stop()
+        
+        // 1. Прибираємо оверлей GameOver
+        gameOverOverlayNode?.removeFromParent()
+        gameOverOverlayNode = nil
+        
+        // 2. Розблоковуємо сцену та ігровий стан
+        isPaused = false
+        isGameOver = false
+        isPlayerFalling = false
+        gameState = .playing
+        lastUpdateTime = 0
+        
+        // 3. Встановлюємо 1 життя та оновлюємо HUD
+        currentLives = 1
+        updateHUD(animated: true)
+        
+        // 4. Очищаємо ворожі стріли
+        activeFireArrows.forEach { $0.removeFromParent() }
+        activeFireArrows.removeAll()
+        
+        // 5. Очищаємо небезпечних мобів поруч із точкою відродження гравця
+        let pY = cameraNode.position.y + playerCameraOffsetY
+        for mob in trackMobNodes {
+            if abs(mob.position.y - pY) < 240.0 {
+                mob.removeFromParent()
+            }
+        }
+        trackMobNodes.removeAll { $0.parent == nil }
+        
+        // 6. Знаходимо безпечну суцільну ділянку стіни на поточній висоті камери
+        let isLeftSafe = isWallRangeSolid(onLeftWall: true, minY: pY - 35.0, maxY: pY + 55.0, safetyMargin: 25.0)
+        let isRightSafe = isWallRangeSolid(onLeftWall: false, minY: pY - 35.0, maxY: pY + 55.0, safetyMargin: 25.0)
+        
+        let onLeft: Bool
+        if isLeftSafe {
+            onLeft = true
+        } else if isRightSafe {
+            onLeft = false
+        } else {
+            onLeft = Bool.random()
+        }
+        
+        let safeX = onLeft ? playerLeftX : playerRightX
+        let safePos = CGPoint(x: safeX, y: pY)
+        
+        // 7. Відроджуємо персонажа на безпечній скелі з 3 секундами повної невразливості
+        player.respawn(onLeftWall: onLeft, at: safePos)
+        
+        // 8. Візуальний ефект відновлення серця
+        playHeartPickupEffect(at: safePos)
+        
+        // 9. Відновлюємо фонову музику гри
+        startBGM(lowVolume: false)
+    }
+    
     private func restartGame() {
+        gameOverOverlayNode?.removeFromParent()
+        gameOverOverlayNode = nil
         stopBGM(fadeDuration: 0.2)
         let newScene = GameScene(size: size, initialMode: .playing)
         newScene.scaleMode = scaleMode
@@ -2894,9 +3150,29 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     private func goToMainMenu() {
+        gameOverOverlayNode?.removeFromParent()
+        gameOverOverlayNode = nil
         stopBGM(fadeDuration: 0.2)
         let newScene = GameScene(size: size, initialMode: .menu)
         newScene.scaleMode = scaleMode
         view?.presentScene(newScene)
     }
+}
+
+// MARK: - Unified Number Formatting
+extension Int {
+    /// Уніфікований формат чисел для всієї гри з розділювачем тисяч (наприклад: 25,000, 1,200)
+    var formattedWithSeparator: String {
+        return NumberFormatter.gameNumberFormatter.string(from: NSNumber(value: self)) ?? "\(self)"
+    }
+}
+
+extension NumberFormatter {
+    fileprivate static let gameNumberFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.groupingSeparator = ","
+        formatter.usesGroupingSeparator = true
+        return formatter
+    }()
 }

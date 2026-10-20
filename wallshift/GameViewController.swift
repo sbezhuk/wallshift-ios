@@ -16,6 +16,13 @@ class GameViewController: UIViewController {
         self.view = skView
     }
 
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        
+        // Ініціалізація Unity Ads для показу відеореклами з нагородою
+        UnityAdsManager.shared.initialize()
+    }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         

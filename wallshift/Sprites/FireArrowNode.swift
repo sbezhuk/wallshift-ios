@@ -14,11 +14,11 @@ final class FireArrowNode: SKSpriteNode {
     // MARK: - Constants
     enum Constants {
         static let visualSize = CGSize(width: 54.0, height: 26.0)
-        static let hitboxSize = CGSize(width: 28.0, height: 14.0)
+        static let hitboxSize = CGSize(width: 24.0, height: 12.0)
         static let frameCount: Int = 8
         static let framePrefix: String = "fire_arrow_"
         static let timePerFrame: TimeInterval = 0.045
-        static let defaultSpeed: CGFloat = 300.0
+        static let defaultSpeed: CGFloat = 240.0
     }
     
     // MARK: - Properties
@@ -64,12 +64,14 @@ final class FireArrowNode: SKSpriteNode {
         zPosition = 7.0
         position = startPosition
         
-        // Розрахунок кута польоту (вихідний спрайт стріли спрямований праворуч)
+        // Розрахунок кута польоту:
+        // Вихідні спрайти (fire_arrow_* та water_arrow_*) спрямовані наконечником ліворуч,
+        // а хвіст розширюється праворуч. Додаємо .pi, щоб снаряд летів наконечником уперед до цілі.
         let dx = targetPosition.x - startPosition.x
         let dy = targetPosition.y - startPosition.y
         let distance = hypot(dx, dy)
         let angle = atan2(dy, dx)
-        zRotation = angle
+        zRotation = angle + .pi
         
         setupPhysics()
         setupFlameGlow()
@@ -82,8 +84,8 @@ final class FireArrowNode: SKSpriteNode {
     
     // MARK: - Physics Setup
     private func setupPhysics() {
-        // Хітбокс зміщений ближче до наконечника стріли
-        let body = SKPhysicsBody(rectangleOf: Constants.hitboxSize, center: CGPoint(x: 4.0, y: 0.0))
+        // Хітбокс зміщений ближче до наконечника стріли (наконечник знаходиться ліворуч від центру)
+        let body = SKPhysicsBody(rectangleOf: Constants.hitboxSize, center: CGPoint(x: -8.0, y: 0.0))
         body.isDynamic = false
         body.affectedByGravity = false
         body.categoryBitMask = PhysicsCategory.obstacle
@@ -95,6 +97,7 @@ final class FireArrowNode: SKSpriteNode {
     // MARK: - Visual Glow
     private func setupFlameGlow() {
         let glowNode = SKShapeNode(ellipseOf: CGSize(width: Constants.visualSize.width * 0.9, height: Constants.visualSize.height * 0.8))
+        glowNode.position = CGPoint(x: -6.0, y: 0.0)
         if projectileType == .water {
             glowNode.fillColor = SKColor(red: 0.15, green: 0.70, blue: 1.0, alpha: 0.35)
         } else {
