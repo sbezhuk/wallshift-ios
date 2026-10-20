@@ -7,6 +7,7 @@
 
 import SpriteKit
 import AVFoundation
+import AudioToolbox
 import UIKit
 
 // MARK: - Physics Categories
@@ -25,6 +26,53 @@ struct PhysicsCategory {
 enum AppFont {
     /// Головний шрифт гри (Jungle Adventurer)
     static let name: String = "JungleAdventurerRegular"
+}
+
+// MARK: - Reusable Pooled Coin Spark Node (Metal Sprite Batched, Zero CPU Particles)
+final class PooledCoinSparkNode: SKNode {
+    private let starSprite: SKSpriteNode
+    private(set) var inUse: Bool = false
+    
+    init(texture: SKTexture) {
+        self.starSprite = SKSpriteNode(texture: texture, size: CGSize(width: 24.0, height: 24.0))
+        self.starSprite.zPosition = 4.8
+        super.init()
+        addChild(starSprite)
+        self.isHidden = true
+    }
+    
+    required init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    func trigger(at pos: CGPoint) {
+        self.position = pos
+        self.inUse = true
+        self.isHidden = false
+        starSprite.setScale(0.2)
+        starSprite.alpha = 1.0
+        starSprite.zRotation = CGFloat.random(in: 0...(.pi * 2.0))
+        
+        starSprite.removeAction(forKey: "sparkAnim")
+        let scaleUp = SKAction.scale(to: 1.25, duration: 0.08)
+        scaleUp.timingMode = .easeOut
+        let scaleDown = SKAction.scale(to: 0.15, duration: 0.12)
+        let fadeOut = SKAction.fadeOut(withDuration: 0.12)
+        let moveUp = SKAction.moveBy(x: 0, y: 14.0, duration: 0.20)
+        let rotate = SKAction.rotate(byAngle: .pi * 0.75, duration: 0.20)
+        
+        let animGroup = SKAction.group([
+            SKAction.sequence([scaleUp, SKAction.group([scaleDown, fadeOut])]),
+            moveUp,
+            rotate
+        ])
+        let finish = SKAction.run { [weak self] in
+            self?.starSprite.position = .zero
+            self?.isHidden = true
+            self?.inUse = false
+        }
+        starSprite.run(SKAction.sequence([animGroup, finish]), withKey: "sparkAnim")
+    }
 }
 
 // MARK: - Reusable Pooled Particle Node
@@ -141,8 +189,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private static let starParticleTexture = SKTexture(imageNamed: "gui_icon_star")
     private static let heartParticleTexture = SKTexture(imageNamed: "life_hearth")
     
-    private var coinPickupPool: [PooledParticleNode] = []
+    private var coinPickupPool: [PooledCoinSparkNode] = []
     private var heartPickupPool: [PooledParticleNode] = []
+    
+    private static let coinIconPulseAction: SKAction = {
+        let scaleUp = SKAction.scale(to: 1.30, duration: 0.06)
+        let scaleDown = SKAction.scale(to: 1.0, duration: 0.10)
+        return SKAction.sequence([scaleUp, scaleDown])
+    }()
     
     /// Завантаження та прогрів усіх текстур активної теми у пам'ять GPU для усунення мікрофризів
     private func updateCachedThemeTextures() {
@@ -240,12 +294,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     // MARK: - Audio
-    private var jumpAudioPlayer: AVAudioPlayer?
-    private var gameOverAudioPlayer: AVAudioPlayer?
-    private var coinAudioPlayers: [AVAudioPlayer] = []
-    private var currentCoinAudioIndex: Int = 0
-    private var bgmAudioPlayer: AVAudioPlayer?
-    private static let bgmTargetVolume: Float = 0.72
+    private static let bgmTargetVolume: Float = GameAudio.bgmTargetVolume
     
     // MARK: - Nodes & State
     private let cameraNode = SKCameraNode()
@@ -538,48 +587,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         coinPickupPool.removeAll()
         heartPickupPool.removeAll()
         
-        // 1. Пул частинок для збору монет (8 пре-ініціалізованих нод)
+        // 1. Пул зірочок для збору монет (8 пре-ініціалізованих нод на базі спрайтів, нуль CPU-частинок)
         for _ in 0..<8 {
-            let starEmitter = SKEmitterNode()
-            starEmitter.particleTexture = GameScene.starParticleTexture
-            starEmitter.particleBirthRate = 200
-            starEmitter.numParticlesToEmit = 8
-            starEmitter.particleLifetime = 0.28
-            starEmitter.particleLifetimeRange = 0.08
-            starEmitter.particleSpeed = 65.0
-            starEmitter.particleSpeedRange = 25.0
-            starEmitter.emissionAngle = 0
-            starEmitter.emissionAngleRange = .pi * 2.0
-            starEmitter.particleAlpha = 0.95
-            starEmitter.particleAlphaSpeed = -2.6
-            starEmitter.particleScale = 0.055
-            starEmitter.particleScaleRange = 0.02
-            starEmitter.particleScaleSpeed = -0.09
-            starEmitter.particleRotation = 0
-            starEmitter.particleRotationSpeed = .pi * 3.0
-            starEmitter.particleRotationRange = .pi * 2.0
-            starEmitter.particleBlendMode = .alpha
-            
-            let sparkEmitter = SKEmitterNode()
-            sparkEmitter.particleTexture = GameScene.sparkTexture
-            sparkEmitter.particleBirthRate = 250
-            sparkEmitter.numParticlesToEmit = 10
-            sparkEmitter.particleLifetime = 0.25
-            sparkEmitter.particleLifetimeRange = 0.06
-            sparkEmitter.particleSpeed = 75.0
-            sparkEmitter.particleSpeedRange = 25.0
-            sparkEmitter.emissionAngle = 0
-            sparkEmitter.emissionAngleRange = .pi * 2.0
-            sparkEmitter.particleAlpha = 0.95
-            sparkEmitter.particleAlphaSpeed = -3.0
-            sparkEmitter.particleScale = 0.16
-            sparkEmitter.particleScaleRange = 0.05
-            sparkEmitter.particleScaleSpeed = -0.25
-            sparkEmitter.particleColor = SKColor(red: 1.0, green: 0.88, blue: 0.30, alpha: 1.0)
-            sparkEmitter.particleColorBlendFactor = 1.0
-            sparkEmitter.particleBlendMode = .add
-            
-            let poolNode = PooledParticleNode(emitter1: starEmitter, emitter2: sparkEmitter)
+            let poolNode = PooledCoinSparkNode(texture: GameScene.starParticleTexture)
             addChild(poolNode)
             coinPickupPool.append(poolNode)
         }
@@ -634,146 +644,42 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     private func setupAudio() {
-        // Налаштовуємо аудіосесію для відтворення звуків навіть у беззвучному режимі
-        try? AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
-        try? AVAudioSession.sharedInstance().setActive(true)
-        
-        // Завантажуємо звук стрибка з Assets (Data Asset player_jump)
-        if let dataAsset = NSDataAsset(name: "player_jump") {
-            do {
-                jumpAudioPlayer = try AVAudioPlayer(data: dataAsset.data)
-                jumpAudioPlayer?.prepareToPlay()
-            } catch {
-                print("Failed to initialize AVAudioPlayer from NSDataAsset: \(error)")
-            }
-        } else if let fileURL = Bundle.main.url(forResource: "player_jump", withExtension: "mp3") {
-            do {
-                jumpAudioPlayer = try AVAudioPlayer(contentsOf: fileURL)
-                jumpAudioPlayer?.prepareToPlay()
-            } catch {
-                print("Failed to initialize AVAudioPlayer from bundle file: \(error)")
-            }
-        }
-        
-        // Завантажуємо звук програшу (Data Asset game_over)
-        if let dataAsset = NSDataAsset(name: "game_over") {
-            do {
-                gameOverAudioPlayer = try AVAudioPlayer(data: dataAsset.data)
-                gameOverAudioPlayer?.prepareToPlay()
-            } catch {
-                print("Failed to initialize AVAudioPlayer for game_over from NSDataAsset: \(error)")
-            }
-        } else if let fileURL = Bundle.main.url(forResource: "game_over", withExtension: "mp3") {
-            do {
-                gameOverAudioPlayer = try AVAudioPlayer(contentsOf: fileURL)
-                gameOverAudioPlayer?.prepareToPlay()
-            } catch {
-                print("Failed to initialize AVAudioPlayer for game_over from bundle file: \(error)")
-            }
-        }
-        
-        // Завантажуємо звук збору монети (Data Asset coin_pickup)
-        let coinData = NSDataAsset(name: "coin_pickup")?.data
-        if let data = coinData {
-            coinAudioPlayers.removeAll()
-            for _ in 0..<4 {
-                if let player = try? AVAudioPlayer(data: data) {
-                    player.prepareToPlay()
-                    player.volume = 0.85
-                    coinAudioPlayers.append(player)
-                }
-            }
-        }
-        
-        // Завантажуємо зациклену фонову музику (Data Asset background_music)
-        let bgmData = NSDataAsset(name: "background_music")?.data
-        if let data = bgmData {
-            do {
-                bgmAudioPlayer = try AVAudioPlayer(data: data, fileTypeHint: AVFileType.wav.rawValue)
-                bgmAudioPlayer?.numberOfLoops = -1
-                bgmAudioPlayer?.prepareToPlay()
-            } catch {
-                do {
-                    bgmAudioPlayer = try AVAudioPlayer(data: data)
-                    bgmAudioPlayer?.numberOfLoops = -1
-                    bgmAudioPlayer?.prepareToPlay()
-                } catch {
-                    print("Failed to initialize AVAudioPlayer for BGM from NSDataAsset: \(error)")
-                }
-            }
-        } else if let fileURL = Bundle.main.url(forResource: "background_music", withExtension: "wav") {
-            do {
-                bgmAudioPlayer = try AVAudioPlayer(contentsOf: fileURL)
-                bgmAudioPlayer?.numberOfLoops = -1
-                bgmAudioPlayer?.prepareToPlay()
-            } catch {
-                print("Failed to initialize AVAudioPlayer for BGM from bundle: \(error)")
-            }
-        }
+        GameAudio.shared.setupIfNeeded()
     }
     
     private var isMuted: Bool {
-        return UserDefaults.standard.bool(forKey: "WallShiftMuted")
+        return GameAudio.shared.isMuted
     }
     
     /// Динамічний запуск зацикленої фонової музики (з пониженою гучністю для меню або повною для гри)
     private func startBGM(lowVolume: Bool = false) {
-        guard !isMuted else { return }
-        guard let player = bgmAudioPlayer else { return }
-        player.numberOfLoops = -1
-        let targetVol = lowVolume ? Float(0.35) : GameScene.bgmTargetVolume
-        player.volume = lowVolume ? targetVol : 0.25
-        player.currentTime = 0
-        player.play()
-        if !lowVolume {
-            player.setVolume(GameScene.bgmTargetVolume, fadeDuration: 0.6)
-        }
+        GameAudio.shared.startBGM(lowVolume: lowVolume)
     }
     
     private func toggleMute() {
-        let currentlyMuted = isMuted
-        UserDefaults.standard.set(!currentlyMuted, forKey: "WallShiftMuted")
-        let iconName = (!currentlyMuted) ? "gui_icon_audio_off" : "gui_icon_audio_on"
+        let isMuted = GameAudio.shared.toggleMute()
+        let iconName = isMuted ? "gui_icon_audio_off" : "gui_icon_audio_on"
         soundIconSprite?.texture = SKTexture(imageNamed: iconName)
-        if !currentlyMuted {
-            bgmAudioPlayer?.pause()
-        } else {
-            bgmAudioPlayer?.play()
-        }
     }
     
     /// Плавне спадання тону/гучності фонової музики (fade-out 2.0 с) при завершенні гри
     private func stopBGM(fadeDuration: TimeInterval = 2.0) {
-        guard let player = bgmAudioPlayer, player.isPlaying else { return }
-        player.setVolume(0.0, fadeDuration: fadeDuration)
-        DispatchQueue.main.asyncAfter(deadline: .now() + fadeDuration) { [weak player] in
-            if player?.volume == 0.0 {
-                player?.stop()
-            }
-        }
+        GameAudio.shared.stopBGM(fadeDuration: fadeDuration)
     }
     
     /// Відтворення звуку стрибка героя при тапі на екран
     private func playJumpSound() {
-        guard !isMuted, let audioPlayer = jumpAudioPlayer else { return }
-        audioPlayer.currentTime = 0
-        audioPlayer.play()
+        GameAudio.shared.playJump()
     }
     
     /// Відтворення звуку закінчення гри при програші
     private func playGameOverSound() {
-        guard !isMuted, let audioPlayer = gameOverAudioPlayer else { return }
-        audioPlayer.currentTime = 0
-        audioPlayer.play()
+        GameAudio.shared.playGameOver()
     }
     
     /// Відтворення звуку підбору монети (coin_pickup)
     private func playCoinSound() {
-        guard !isMuted, !coinAudioPlayers.isEmpty else { return }
-        let player = coinAudioPlayers[currentCoinAudioIndex]
-        currentCoinAudioIndex = (currentCoinAudioIndex + 1) % coinAudioPlayers.count
-        player.currentTime = 0
-        player.play()
+        GameAudio.shared.playCoin()
     }
     
     private func setupBackground() {
@@ -1715,7 +1621,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // Піднімаємо гучність фонової музики до повного ігрового рівня
         if !isMuted {
-            bgmAudioPlayer?.setVolume(GameScene.bgmTargetVolume, fadeDuration: 0.6)
+            GameAudio.shared.setBGMVolume(GameAudio.bgmTargetVolume, fadeDuration: 0.6)
         }
     }
     
@@ -2638,12 +2544,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                     return
                 }
                 if node.name == "menuButton" || node.parent?.name == "menuButton" {
-                    gameOverAudioPlayer?.stop()
                     goToMainMenu()
                     return
                 }
                 if node.name == "retryButton" || node.parent?.name == "retryButton" {
-                    gameOverAudioPlayer?.stop()
                     restartGame()
                     return
                 }
@@ -2995,17 +2899,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // Оновлюємо лічильник монет у HUD
         coinsLabel.text = coinsCollected.formattedWithSeparator
         
-        // Пружний сплеск іконки монети в HUD
+        // Пружний сплеск іконки монети в HUD (використовуємо кешований SKAction)
         hudCoinIcon?.removeAction(forKey: "coinPulse")
-        let scaleUpIcon = SKAction.scale(to: 1.38, duration: 0.08)
-        let scaleDownIcon = SKAction.scale(to: 1.0, duration: 0.12)
-        hudCoinIcon?.run(SKAction.sequence([scaleUpIcon, scaleDownIcon]), withKey: "coinPulse")
-        
-        // Сплеск тексту лічильника
-        coinsLabel.removeAction(forKey: "labelPulse")
-        let scaleUpText = SKAction.scale(to: 1.25, duration: 0.08)
-        let scaleDownText = SKAction.scale(to: 1.0, duration: 0.12)
-        coinsLabel.run(SKAction.sequence([scaleUpText, scaleDownText]), withKey: "labelPulse")
+        hudCoinIcon?.run(GameScene.coinIconPulseAction, withKey: "coinPulse")
         
         // Спливаючий золотистий індикатор +1 над монетою
         playCoinPickupEffect(at: coin.position)
@@ -3014,9 +2910,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     /// Акуратна система мікро-частинок при підборі монети з пулу (без створення нод на льоту)
     private func playCoinPickupEffect(at position: CGPoint) {
         if let node = coinPickupPool.first(where: { !$0.inUse }) {
-            node.trigger(at: position, duration: 0.35)
+            node.trigger(at: position)
         } else if let oldest = coinPickupPool.first {
-            oldest.trigger(at: position, duration: 0.35)
+            oldest.trigger(at: position)
         }
     }
     
@@ -3053,9 +2949,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         gameState = .gameOver
         
         // Якщо звук ще не почав грати, запускаємо його
-        if gameOverAudioPlayer?.isPlaying != true {
-            playGameOverSound()
-        }
+        playGameOverSound()
         stopBGM(fadeDuration: 1.5)
         
         showGameOverOverlay(subtitle: message)
@@ -3349,8 +3243,6 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     
     /// Відродження персонажа з 1 серцем та повернення до гри
     private func revivePlayerWithOneHeart() {
-        gameOverAudioPlayer?.stop()
-        
         // 1. Прибираємо оверлей GameOver
         gameOverOverlayNode?.removeFromParent()
         gameOverOverlayNode = nil
