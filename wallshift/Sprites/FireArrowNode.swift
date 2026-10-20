@@ -18,14 +18,15 @@ final class FireArrowNode: SKSpriteNode {
         static let frameCount: Int = 8
         static let framePrefix: String = "fire_arrow_"
         static let timePerFrame: TimeInterval = 0.045
-        static let defaultSpeed: CGFloat = 340.0
+        static let defaultSpeed: CGFloat = 260.0
     }
     
     // MARK: - Properties
+    let projectileType: ProjectileType
     private(set) var isExploded: Bool = false
     
-    // Кешовані текстури вогняної стріли (8 кадрів з Assets.xcassets/Sprites/Enemies/FireArrow)
-    private static let arrowTextures: [SKTexture] = {
+    // Кешовані текстури вогняної стріли
+    private static let fireArrowTextures: [SKTexture] = {
         var textures: [SKTexture] = []
         for i in 0..<Constants.frameCount {
             let name = "\(Constants.framePrefix)\(i)"
@@ -36,9 +37,27 @@ final class FireArrowNode: SKSpriteNode {
         return textures
     }()
     
+    // Кешовані текстури водяної стріли
+    private static let waterArrowTextures: [SKTexture] = {
+        var textures: [SKTexture] = []
+        for i in 0..<8 {
+            let name = "water_arrow_\(i)"
+            let texture = SKTexture(imageNamed: name)
+            texture.filteringMode = .linear
+            textures.append(texture)
+        }
+        return textures
+    }()
+    
+    private var activeTextures: [SKTexture] {
+        return projectileType == .water ? FireArrowNode.waterArrowTextures : FireArrowNode.fireArrowTextures
+    }
+    
     // MARK: - Initialization
-    init(from startPosition: CGPoint, towards targetPosition: CGPoint, speed: CGFloat = Constants.defaultSpeed) {
-        let initialTexture = FireArrowNode.arrowTextures.first ?? SKTexture()
+    init(from startPosition: CGPoint, towards targetPosition: CGPoint, projectileType: ProjectileType = .fire, speed: CGFloat = Constants.defaultSpeed) {
+        self.projectileType = projectileType
+        let textures = (projectileType == .water) ? FireArrowNode.waterArrowTextures : FireArrowNode.fireArrowTextures
+        let initialTexture = textures.first ?? SKTexture()
         super.init(texture: initialTexture, color: .clear, size: Constants.visualSize)
         
         name = "FireArrowNode"
@@ -76,7 +95,11 @@ final class FireArrowNode: SKSpriteNode {
     // MARK: - Visual Glow
     private func setupFlameGlow() {
         let glowNode = SKShapeNode(ellipseOf: CGSize(width: Constants.visualSize.width * 0.9, height: Constants.visualSize.height * 0.8))
-        glowNode.fillColor = SKColor(red: 1.0, green: 0.45, blue: 0.1, alpha: 0.28)
+        if projectileType == .water {
+            glowNode.fillColor = SKColor(red: 0.15, green: 0.70, blue: 1.0, alpha: 0.35)
+        } else {
+            glowNode.fillColor = SKColor(red: 1.0, green: 0.45, blue: 0.1, alpha: 0.28)
+        }
         glowNode.strokeColor = .clear
         glowNode.zPosition = -1.0
         glowNode.blendMode = .add
@@ -85,10 +108,10 @@ final class FireArrowNode: SKSpriteNode {
     
     // MARK: - Flight & Animation
     private func startFlight(distance: CGFloat, dx: CGFloat, dy: CGFloat, speed: CGFloat) {
-        // 1. Анімація мерехтіння полум'я стріли
-        if !FireArrowNode.arrowTextures.isEmpty {
+        // 1. Анімація мерехтіння стріли
+        if !activeTextures.isEmpty {
             let animateAction = SKAction.repeatForever(
-                SKAction.animate(with: FireArrowNode.arrowTextures, timePerFrame: Constants.timePerFrame, resize: false, restore: true)
+                SKAction.animate(with: activeTextures, timePerFrame: Constants.timePerFrame, resize: false, restore: true)
             )
             run(animateAction, withKey: "flameAnimation")
         }
@@ -114,7 +137,7 @@ final class FireArrowNode: SKSpriteNode {
     }
     
     // MARK: - Explosion / Impact
-    /// Візуальний вибух полум'я при попаданні в героя або перешкоду
+    /// Візуальний вибух полум'я або водяний сплеск при попаданні в героя або перешкоду
     func explodeAndRemove() {
         guard !isExploded else { return }
         isExploded = true
@@ -124,10 +147,15 @@ final class FireArrowNode: SKSpriteNode {
         removeAction(forKey: "flightAction")
         removeAction(forKey: "flameAnimation")
         
-        // Спалах полум'я
+        // Спалах полум'я / води
         let burst = SKShapeNode(circleOfRadius: 18.0)
-        burst.fillColor = SKColor(red: 1.0, green: 0.6, blue: 0.1, alpha: 0.8)
-        burst.strokeColor = SKColor.yellow
+        if projectileType == .water {
+            burst.fillColor = SKColor(red: 0.2, green: 0.85, blue: 1.0, alpha: 0.8)
+            burst.strokeColor = SKColor(red: 0.7, green: 0.95, blue: 1.0, alpha: 1.0)
+        } else {
+            burst.fillColor = SKColor(red: 1.0, green: 0.6, blue: 0.1, alpha: 0.8)
+            burst.strokeColor = SKColor.yellow
+        }
         burst.lineWidth = 2.0
         burst.zPosition = 8.0
         burst.blendMode = .add

@@ -52,21 +52,20 @@ final class PlayerNode: SKSpriteNode {
         return currentState == .dead
     }
     
-    // Кешовані текстури анімації бігу (завантажуються з Assets/Sprites/Player/Running/run_X)
-    private static let runningTextures: [SKTexture] = {
+    // Кешовані текстури анімації бігу поточного персонажа
+    private var activeRunningTextures: [SKTexture] = []
+    
+    // MARK: - Initialization
+    init(prefix: String = "run_", frameCount: Int = 12) {
         var textures: [SKTexture] = []
-        for i in 0..<Constants.runningFrameCount {
-            let frameName = "\(Constants.runningFramePrefix)\(i)"
+        for i in 0..<frameCount {
+            let frameName = "\(prefix)\(i)"
             let texture = SKTexture(imageNamed: frameName)
             texture.filteringMode = .linear
             textures.append(texture)
         }
-        return textures
-    }()
-    
-    // MARK: - Initialization
-    init() {
-        let defaultTexture = PlayerNode.runningTextures.first ?? SKTexture()
+        self.activeRunningTextures = textures
+        let defaultTexture = textures.first ?? SKTexture()
         super.init(texture: defaultTexture, color: .clear, size: Constants.visualSize)
         
         name = "PlayerNode"
@@ -80,9 +79,28 @@ final class PlayerNode: SKSpriteNode {
         super.init(coder: aDecoder)
         name = "PlayerNode"
         zPosition = 5
+        applyTheme(prefix: "run_", frameCount: 12)
         setupPhysicsBody()
         updateOrientation(forLeftWall: true)
         startRunningAnimation()
+    }
+    
+    /// Оновлення образу персонажа (зміна скіна/теми)
+    func applyTheme(prefix: String, frameCount: Int = 12) {
+        var textures: [SKTexture] = []
+        for i in 0..<frameCount {
+            let frameName = "\(prefix)\(i)"
+            let texture = SKTexture(imageNamed: frameName)
+            texture.filteringMode = .linear
+            textures.append(texture)
+        }
+        self.activeRunningTextures = textures
+        if let first = textures.first {
+            self.texture = first
+        }
+        if currentState == .running {
+            startRunningAnimation()
+        }
     }
     
     // MARK: - Physics Setup
@@ -118,11 +136,11 @@ final class PlayerNode: SKSpriteNode {
     
     /// Запуск циклічної анімації бігу по стіні
     func startRunningAnimation() {
-        guard !PlayerNode.runningTextures.isEmpty else { return }
+        guard !activeRunningTextures.isEmpty else { return }
         
         currentState = .running
         let runAction = SKAction.repeatForever(
-            SKAction.animate(with: PlayerNode.runningTextures, timePerFrame: Constants.timePerFrame, resize: false, restore: true)
+            SKAction.animate(with: activeRunningTextures, timePerFrame: Constants.timePerFrame, resize: false, restore: true)
         )
         run(runAction, withKey: "runAnimation")
     }
@@ -131,7 +149,7 @@ final class PlayerNode: SKSpriteNode {
     func setReadyStance() {
         removeAction(forKey: "runAnimation")
         currentState = .idle
-        if let first = PlayerNode.runningTextures.first {
+        if let first = activeRunningTextures.first {
             texture = first
         }
     }

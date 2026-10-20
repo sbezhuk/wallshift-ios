@@ -40,8 +40,9 @@ final class MobNode: SKSpriteNode {
         static let shooterPrefix: String = "shooter_walk_"
         
         // Параметри стрільби
-        static let shotCooldown: TimeInterval = 1.8
-        static let detectionRangeY: CGFloat = 520.0
+        static let shotCooldown: TimeInterval = 2.4
+        static let detectionRangeY: CGFloat = 360.0
+        static let telegraphDuration: TimeInterval = 0.55
     }
     
     // MARK: - Properties
@@ -92,7 +93,8 @@ final class MobNode: SKSpriteNode {
         wallX: CGFloat,
         pointAY: CGFloat,
         pointBY: CGFloat,
-        patrolSpeed: CGFloat
+        patrolSpeed: CGFloat,
+        customTextures: [SKTexture]? = nil
     ) {
         self.mobType = mobType
         self.isOnLeftWall = isOnLeftWall
@@ -100,8 +102,13 @@ final class MobNode: SKSpriteNode {
         self.pointBY = max(pointAY, pointBY)
         self.patrolSpeed = patrolSpeed
         
-        // Вибираємо відповідний набір спрайтів: старий або новий
-        let textures = (mobType == .shooter) ? MobNode.shooterWalkTextures : MobNode.patrollerWalkTextures
+        // Вибираємо відповідний набір спрайтів: кастомний за темою або стандартний
+        let textures: [SKTexture]
+        if let custom = customTextures, !custom.isEmpty {
+            textures = custom
+        } else {
+            textures = (mobType == .shooter) ? MobNode.shooterWalkTextures : MobNode.patrollerWalkTextures
+        }
         self.activeWalkTextures = textures
         
         let initialTexture = textures.first ?? SKTexture()
@@ -192,7 +199,8 @@ final class MobNode: SKSpriteNode {
         playerPosition: CGPoint,
         playerIsOnLeftWall: Bool,
         playerIsJumping: Bool,
-        currentTime: TimeInterval
+        currentTime: TimeInterval,
+        isDodgeSafe: Bool = true
     ) {
         guard mobType == .shooter, !isAttacking else { return }
         
@@ -202,18 +210,21 @@ final class MobNode: SKSpriteNode {
         // 2. Гравець не в польоті під час стрибка
         guard !playerIsJumping else { return }
         
-        // 3. Гравець у зоні видимості/досяжності моба
-        let verticalDistance = abs(playerPosition.y - position.y)
-        guard verticalDistance <= Constants.detectionRangeY else { return }
+        // 3. Чесність ухилення: протилежна стіна ОБОВ'ЯЗКОВО безпечна для стрибка (без прірв)
+        guard isDodgeSafe else { return }
         
-        // 4. Перевірка кулдауну між пострілами
+        // 4. Гравець знаходиться нижче моба (наближається) у зоні видимості/досяжності
+        let verticalDistance = position.y - playerPosition.y
+        guard verticalDistance > 35.0 && verticalDistance <= Constants.detectionRangeY else { return }
+        
+        // 5. Перевірка кулдауну між пострілами
         guard currentTime - lastShotTime >= Constants.shotCooldown else { return }
         
-        // Запуск підготовки та пострілу вогняної стріли
+        // Запуск підготовки та пострілу стріли
         triggerAttack(towards: playerPosition, currentTime: currentTime)
     }
     
-    /// Підготовка та здійснення пострілу з візуальним телеграфом для чесного ухилення
+    /// Підготовка та здійснення пострілу з виразним візуальним телеграфом для комфортного ухилення
     private func triggerAttack(towards targetPosition: CGPoint, currentTime: TimeInterval) {
         guard !isAttacking else { return }
         isAttacking = true
@@ -222,34 +233,31 @@ final class MobNode: SKSpriteNode {
         // Сповільнюємо рух патрулювання на час прицілювання
         action(forKey: "patrolMovement")?.speed = 0.2
         
-        // Візуальний телеграф: вогняний спалах прицілювання
-        let chargeGlow = SKShapeNode(circleOfRadius: 18.0)
-        chargeGlow.fillColor = SKColor(red: 1.0, green: 0.35, blue: 0.05, alpha: 0.7)
-        chargeGlow.strokeColor = SKColor(red: 1.0, green: 0.85, blue: 0.2, alpha: 0.9)
-        chargeGlow.lineWidth = 2.0
+        // Візуальний телеграф: пульсуючий спалах прицілювання
+        let chargeGlow = SKShapeNode(circleOfRadius: 20.0)
+        chargeGlow.fillColor = SKColor(red: 1.0, green: 0.35, blue: 0.05, alpha: 0.8)
+        chargeGlow.strokeColor = SKColor(red: 1.0, green: 0.90, blue: 0.2, alpha: 1.0)
+        chargeGlow.lineWidth = 2.5
         chargeGlow.blendMode = .add
         chargeGlow.zPosition = 6.0
         addChild(chargeGlow)
         
-        let chargeAnim = SKAction.sequence([
-            SKAction.scale(to: 1.35, duration: 0.28),
-            SKAction.group([
-                SKAction.scale(to: 0.3, duration: 0.08),
-                SKAction.fadeOut(withDuration: 0.08)
-            ]),
-            SKAction.removeFromParent()
-        ])
-        chargeGlow.run(chargeAnim)
+        let pulse1 = SKAction.scale(to: 1.45, duration: 0.22)
+        let pulse2 = SKAction.scale(to: 1.0, duration: 0.15)
+        let pulse3 = SKAction.scale(to: 1.6, duration: 0.18)
+        let fadeOut = SKAction.fadeOut(withDuration: 0.06)
+        let remove = SKAction.removeFromParent()
+        chargeGlow.run(SKAction.sequence([pulse1, pulse2, pulse3, fadeOut, remove]))
         
-        // Короткий час затримки (~0.36 с), щоб гравець помітив початок атаки та встиг зреагувати
-        let waitToShoot = SKAction.wait(forDuration: 0.36)
+        // Достатній час затримки (~0.55 с), щоб гравець встиг спокійно оцінити ситуацію та стрибнути
+        let waitToShoot = SKAction.wait(forDuration: Constants.telegraphDuration)
         let shootAction = SKAction.run { [weak self] in
             guard let self = self else { return }
             
-            // Випускаємо вогняну стрілу вздовж стіни у бік гравця
-            let shootOffsetY: CGFloat = targetPosition.y < self.position.y ? -26.0 : 26.0
+            // Випускаємо стрілу вниз вздовж стіни у бік гравця
+            let shootOffsetY: CGFloat = -26.0
             let spawnPoint = CGPoint(x: self.position.x, y: self.position.y + shootOffsetY)
-            let aimTarget = CGPoint(x: self.position.x, y: targetPosition.y)
+            let aimTarget = CGPoint(x: self.position.x, y: self.position.y - 400.0)
             
             self.onShootArrow?(spawnPoint, aimTarget)
             
