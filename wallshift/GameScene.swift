@@ -28,91 +28,7 @@ enum AppFont {
     static let name: String = "JungleAdventurerRegular"
 }
 
-// MARK: - Reusable Pooled Coin Spark Node (Metal Sprite Batched, Zero CPU Particles)
-final class PooledCoinSparkNode: SKNode {
-    private let starSprite: SKSpriteNode
-    private(set) var inUse: Bool = false
-    
-    init(texture: SKTexture) {
-        self.starSprite = SKSpriteNode(texture: texture, size: CGSize(width: 24.0, height: 24.0))
-        self.starSprite.zPosition = 4.8
-        super.init()
-        addChild(starSprite)
-        self.isHidden = true
-    }
-    
-    required init?(coder aDecoder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-    
-    func trigger(at pos: CGPoint) {
-        self.position = pos
-        self.inUse = true
-        self.isHidden = false
-        starSprite.setScale(0.2)
-        starSprite.alpha = 1.0
-        starSprite.zRotation = CGFloat.random(in: 0...(.pi * 2.0))
-        
-        starSprite.removeAction(forKey: "sparkAnim")
-        let scaleUp = SKAction.scale(to: 1.25, duration: 0.08)
-        scaleUp.timingMode = .easeOut
-        let scaleDown = SKAction.scale(to: 0.15, duration: 0.12)
-        let fadeOut = SKAction.fadeOut(withDuration: 0.12)
-        let moveUp = SKAction.moveBy(x: 0, y: 14.0, duration: 0.20)
-        let rotate = SKAction.rotate(byAngle: .pi * 0.75, duration: 0.20)
-        
-        let animGroup = SKAction.group([
-            SKAction.sequence([scaleUp, SKAction.group([scaleDown, fadeOut])]),
-            moveUp,
-            rotate
-        ])
-        let finish = SKAction.run { [weak self] in
-            self?.starSprite.position = .zero
-            self?.isHidden = true
-            self?.inUse = false
-        }
-        starSprite.run(SKAction.sequence([animGroup, finish]), withKey: "sparkAnim")
-    }
-}
 
-// MARK: - Reusable Pooled Particle Node
-final class PooledParticleNode: SKNode {
-    let emitter1: SKEmitterNode
-    let emitter2: SKEmitterNode
-    private(set) var inUse: Bool = false
-    
-    init(emitter1: SKEmitterNode, emitter2: SKEmitterNode) {
-        self.emitter1 = emitter1
-        self.emitter2 = emitter2
-        super.init()
-        self.zPosition = 4.8
-        addChild(emitter1)
-        addChild(emitter2)
-        self.isHidden = true
-    }
-    
-    required init?(coder aDecoder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-    
-    func trigger(at pos: CGPoint, duration: TimeInterval = 0.35) {
-        self.position = pos
-        self.inUse = true
-        self.isHidden = false
-        emitter1.resetSimulation()
-        emitter2.resetSimulation()
-        
-        removeAction(forKey: "recycleAction")
-        let recycle = SKAction.sequence([
-            SKAction.wait(forDuration: duration),
-            SKAction.run { [weak self] in
-                self?.isHidden = true
-                self?.inUse = false
-            }
-        ])
-        run(recycle, withKey: "recycleAction")
-    }
-}
 
 // MARK: - GameScene
 final class GameScene: SKScene, SKPhysicsContactDelegate {
@@ -175,7 +91,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private var decorTextures: [SKTexture] { return cachedDecorTextures }
     private var signpostTextures: [SKTexture] { return cachedSignpostTextures }
     
-    // MARK: - Particle Textures & Pools
+    // MARK: - Particle Textures & Spray Templates
     private static let sparkTexture: SKTexture = {
         let dim: CGFloat = 24.0
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: dim, height: dim))
@@ -186,11 +102,135 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         return SKTexture(image: image)
     }()
-    private static let starParticleTexture = SKTexture(imageNamed: "gui_icon_star")
-    private static let heartParticleTexture = SKTexture(imageNamed: "life_hearth")
     
-    private var coinPickupPool: [PooledCoinSparkNode] = []
-    private var heartPickupPool: [PooledParticleNode] = []
+    /// Текстура м'якої мікро-частинки з радіальним градієнтом для ефекту сяючого спрею
+    private static let sprayParticleTexture: SKTexture = {
+        let dim: CGFloat = 20.0
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: dim, height: dim))
+        let image = renderer.image { ctx in
+            let cgCtx = ctx.cgContext
+            let center = CGPoint(x: dim / 2.0, y: dim / 2.0)
+            let radius = (dim / 2.0) - 1.0
+            
+            let colors = [
+                UIColor(white: 1.0, alpha: 1.0).cgColor,
+                UIColor(white: 1.0, alpha: 0.85).cgColor,
+                UIColor(white: 1.0, alpha: 0.0).cgColor
+            ] as CFArray
+            let locations: [CGFloat] = [0.0, 0.45, 1.0]
+            
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: locations) {
+                cgCtx.drawRadialGradient(gradient, startCenter: center, startRadius: 0, endCenter: center, endRadius: radius, options: [])
+            }
+        }
+        let tex = SKTexture(image: image)
+        tex.filteringMode = .linear
+        return tex
+    }()
+    
+    /// Готовий шаблон системи частинок (золотистий спрей дрібних іскор) при підборі монет
+    private static let coinSprayTemplate: SKNode = {
+        let container = SKNode()
+        container.zPosition = 4.8
+        
+        // 1. Основний радіально-висхідний потік дрібних золотистих частинок (спрей)
+        let spray = SKEmitterNode()
+        spray.particleTexture = GameScene.sprayParticleTexture
+        spray.particleBirthRate = 450
+        spray.numParticlesToEmit = 18
+        spray.particleLifetime = 0.35
+        spray.particleLifetimeRange = 0.08
+        spray.particleSpeed = 115.0
+        spray.particleSpeedRange = 40.0
+        spray.emissionAngle = .pi / 2.0
+        spray.emissionAngleRange = .pi * 1.5
+        spray.yAcceleration = -70.0
+        spray.particleAlpha = 0.95
+        spray.particleAlphaSpeed = -2.7
+        spray.particleScale = 0.20
+        spray.particleScaleRange = 0.08
+        spray.particleScaleSpeed = -0.45
+        spray.particleColor = SKColor(red: 1.0, green: 0.84, blue: 0.20, alpha: 1.0)
+        spray.particleColorBlendFactor = 1.0
+        spray.particleBlendMode = .add
+        container.addChild(spray)
+        
+        // 2. Дрібні яскраві мерехтливі іскри
+        let sparkles = SKEmitterNode()
+        sparkles.particleTexture = GameScene.sprayParticleTexture
+        sparkles.particleBirthRate = 300
+        sparkles.numParticlesToEmit = 8
+        sparkles.particleLifetime = 0.24
+        sparkles.particleLifetimeRange = 0.06
+        sparkles.particleSpeed = 65.0
+        sparkles.particleSpeedRange = 30.0
+        sparkles.emissionAngle = .pi / 2.0
+        sparkles.emissionAngleRange = .pi * 2.0
+        sparkles.yAcceleration = -35.0
+        sparkles.particleAlpha = 0.9
+        sparkles.particleAlphaSpeed = -3.5
+        sparkles.particleScale = 0.12
+        sparkles.particleScaleRange = 0.04
+        sparkles.particleScaleSpeed = -0.40
+        sparkles.particleColor = SKColor(red: 1.0, green: 0.98, blue: 0.70, alpha: 1.0)
+        sparkles.particleColorBlendFactor = 1.0
+        sparkles.particleBlendMode = .add
+        container.addChild(sparkles)
+        
+        return container
+    }()
+    
+    /// Готовий шаблон системи частинок (рубіновий цілющий спрей дрібних частинок) при підборі сердець
+    private static let heartSprayTemplate: SKNode = {
+        let container = SKNode()
+        container.zPosition = 4.8
+        
+        // 1. Основний висхідний потік яскраво-рубінових дрібних частинок (цілющий спрей)
+        let spray = SKEmitterNode()
+        spray.particleTexture = GameScene.sprayParticleTexture
+        spray.particleBirthRate = 450
+        spray.numParticlesToEmit = 20
+        spray.particleLifetime = 0.42
+        spray.particleLifetimeRange = 0.10
+        spray.particleSpeed = 100.0
+        spray.particleSpeedRange = 35.0
+        spray.emissionAngle = .pi / 2.0
+        spray.emissionAngleRange = .pi * 1.4
+        spray.yAcceleration = 35.0
+        spray.particleAlpha = 0.95
+        spray.particleAlphaSpeed = -2.2
+        spray.particleScale = 0.22
+        spray.particleScaleRange = 0.08
+        spray.particleScaleSpeed = -0.40
+        spray.particleColor = SKColor(red: 1.0, green: 0.20, blue: 0.38, alpha: 1.0)
+        spray.particleColorBlendFactor = 1.0
+        spray.particleBlendMode = .add
+        container.addChild(spray)
+        
+        // 2. М'які ніжно-рожеві цілющі іскри
+        let sparkles = SKEmitterNode()
+        sparkles.particleTexture = GameScene.sprayParticleTexture
+        sparkles.particleBirthRate = 300
+        sparkles.numParticlesToEmit = 8
+        sparkles.particleLifetime = 0.30
+        sparkles.particleLifetimeRange = 0.08
+        sparkles.particleSpeed = 55.0
+        sparkles.particleSpeedRange = 25.0
+        sparkles.emissionAngle = .pi / 2.0
+        sparkles.emissionAngleRange = .pi * 2.0
+        sparkles.yAcceleration = 25.0
+        sparkles.particleAlpha = 0.9
+        sparkles.particleAlphaSpeed = -2.8
+        sparkles.particleScale = 0.13
+        sparkles.particleScaleRange = 0.05
+        sparkles.particleScaleSpeed = -0.35
+        sparkles.particleColor = SKColor(red: 1.0, green: 0.65, blue: 0.78, alpha: 1.0)
+        sparkles.particleColorBlendFactor = 1.0
+        sparkles.particleBlendMode = .add
+        container.addChild(sparkles)
+        
+        return container
+    }()
     
     private static let coinIconPulseAction: SKAction = {
         let scaleUp = SKAction.scale(to: 1.30, duration: 0.06)
@@ -280,8 +320,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             cachedBushTexture,
             cachedStumpTexture,
             GameScene.sparkTexture,
-            GameScene.starParticleTexture,
-            GameScene.heartParticleTexture
+            GameScene.sprayParticleTexture
         ]
         texturesToPreload.append(contentsOf: cachedTreeTextures)
         texturesToPreload.append(contentsOf: cachedStoneTextures)
@@ -438,13 +477,36 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         return CGFloat.random(in: (meanDistance - spread)...(meanDistance + spread))
     }
     
-    /// Значне скорочення появи сердець (додаткових життів):
-    /// Перше серце з'являється не раніше ~280 очок (~7000 pt),
-    /// а наступні — кожні 9000...14000 pt (~360...560 очок).
-    /// При повному здоров'ї (3 життя) додається ще +7000 pt затримки.
+    /// Динамічний розрахунок дистанції до появи наступного серця (додаткового життя).
+    /// Баланс складності:
+    /// - При 1 житті (критичний стан): ~3,400...5,000 pt (~135...200 очок), дає гравцю чесний шанс вижити при майстерній грі.
+    /// - При 2 життях: ~4,600...6,600 pt (~185...265 очок).
+    /// - При 3 життях (повне здоров'я): ~7,200...10,000 pt (~290...400 очок), щоб не перевантажувати екран зайвими серцями.
+    /// - При високому рахунку (score >= 500-800+): дистанція плавно адаптується (до -20%),
+    ///   компенсуючи пікову щільність ворогів та високу швидкість без зламу складності.
     private func randomHeartDistance() -> CGFloat {
-        let extraDelay: CGFloat = currentLives >= GameScene.maxLives ? 7000.0 : 0.0
-        return CGFloat.random(in: 9000.0...14000.0) + extraDelay
+        let s = CGFloat(max(0, score))
+        
+        let minBase: CGFloat
+        let maxBase: CGFloat
+        
+        if currentLives <= 1 {
+            minBase = 3400.0
+            maxBase = 5000.0
+        } else if currentLives == 2 {
+            minBase = 4600.0
+            maxBase = 6600.0
+        } else {
+            minBase = 7200.0
+            maxBase = 10000.0
+        }
+        
+        // М'який коригуючий множник для високих очок (після 500 до 1200+ очок):
+        // Запобігає надмірному стрибку складності на 800+ очках
+        let highProgress = max(0.0, min(1.0, (s - 500.0) / 700.0))
+        let difficultyFactor = 1.0 - (highProgress * 0.20)
+        
+        return CGFloat.random(in: minBase...maxBase) * difficultyFactor
     }
     
     // Відстеження часу для обчислення deltaTime
@@ -582,65 +644,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         addChild(cameraNode)
     }
     
-    /// Створення пулу багаторазових систем частинок для збору монет та сердець (усуває алокації під час бігу)
+    /// Підготовка систем частинок для збору предметів
     private func setupParticlePools() {
-        coinPickupPool.removeAll()
-        heartPickupPool.removeAll()
-        
-        // 1. Пул зірочок для збору монет (8 пре-ініціалізованих нод на базі спрайтів, нуль CPU-частинок)
-        for _ in 0..<8 {
-            let poolNode = PooledCoinSparkNode(texture: GameScene.starParticleTexture)
-            addChild(poolNode)
-            coinPickupPool.append(poolNode)
-        }
-        
-        // 2. Пул частинок для збору сердець (3 пре-ініціалізовані ноди)
-        for _ in 0..<3 {
-            let heartEmitter = SKEmitterNode()
-            heartEmitter.particleTexture = cachedHeartTexture
-            heartEmitter.particleBirthRate = 200
-            heartEmitter.numParticlesToEmit = 7
-            heartEmitter.particleLifetime = 0.38
-            heartEmitter.particleLifetimeRange = 0.10
-            heartEmitter.particleSpeed = 65.0
-            heartEmitter.particleSpeedRange = 25.0
-            heartEmitter.emissionAngle = .pi / 2.0
-            heartEmitter.emissionAngleRange = .pi * 0.65
-            heartEmitter.yAcceleration = 25.0
-            heartEmitter.particleAlpha = 0.95
-            heartEmitter.particleAlphaSpeed = -2.2
-            heartEmitter.particleScale = 0.08
-            heartEmitter.particleScaleRange = 0.025
-            heartEmitter.particleScaleSpeed = -0.12
-            heartEmitter.particleRotation = 0
-            heartEmitter.particleRotationSpeed = .pi * 1.2
-            heartEmitter.particleRotationRange = .pi
-            heartEmitter.particleBlendMode = .alpha
-            
-            let healEmitter = SKEmitterNode()
-            healEmitter.particleTexture = GameScene.sparkTexture
-            healEmitter.particleBirthRate = 250
-            healEmitter.numParticlesToEmit = 10
-            healEmitter.particleLifetime = 0.35
-            healEmitter.particleLifetimeRange = 0.08
-            healEmitter.particleSpeed = 70.0
-            healEmitter.particleSpeedRange = 25.0
-            healEmitter.emissionAngle = .pi / 2.0
-            healEmitter.emissionAngleRange = .pi * 0.85
-            healEmitter.yAcceleration = 30.0
-            healEmitter.particleAlpha = 0.9
-            healEmitter.particleAlphaSpeed = -2.4
-            healEmitter.particleScale = 0.16
-            healEmitter.particleScaleRange = 0.05
-            healEmitter.particleScaleSpeed = -0.25
-            healEmitter.particleColor = SKColor(red: 0.35, green: 0.98, blue: 0.55, alpha: 1.0)
-            healEmitter.particleColorBlendFactor = 1.0
-            healEmitter.particleBlendMode = .add
-            
-            let poolNode = PooledParticleNode(emitter1: heartEmitter, emitter2: healEmitter)
-            addChild(poolNode)
-            heartPickupPool.append(poolNode)
-        }
+        // Шаблони систем частинок coinSprayTemplate та heartSprayTemplate статично скомпільовані
     }
     
     private func setupAudio() {
@@ -1520,13 +1526,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         backgroundOverlayNode?.run(SKAction.colorize(with: theme.backgroundOverlayColor, colorBlendFactor: 1.0, duration: 0.35))
         backgroundOverlayNode?.run(SKAction.fadeAlpha(to: theme.backgroundOverlayAlpha, duration: 0.35))
         
-        // Оновлення текстури сердець у HUD та пулі частинок
+        // Оновлення текстури сердець у HUD
         let heartTex = cachedHeartTexture
         for heart in heartHUDNodes {
             heart.texture = heartTex
-        }
-        for node in heartPickupPool {
-            node.emitter1.particleTexture = heartTex
         }
         
         // 3. Повне перезавантаження траси, стін, прірв та декорацій під нову тему (у режимі меню)
@@ -2117,8 +2120,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     
     /// Створює додаткове життя на карті тільки в безпечному місці (гарантовано не над прірвою)
     private func spawnHeartItem(atY: CGFloat) {
-        let isLeftSafe = isWallRangeSolid(onLeftWall: true, minY: atY - 30.0, maxY: atY + 30.0, safetyMargin: 50.0)
-        let isRightSafe = isWallRangeSolid(onLeftWall: false, minY: atY - 30.0, maxY: atY + 30.0, safetyMargin: 50.0)
+        let isLeftSafe = isWallRangeSolid(onLeftWall: true, minY: atY - 20.0, maxY: atY + 20.0, safetyMargin: 28.0)
+        let isRightSafe = isWallRangeSolid(onLeftWall: false, minY: atY - 20.0, maxY: atY + 20.0, safetyMargin: 28.0)
         
         let heartX: CGFloat
         let roll = Int.random(in: 0...9)
@@ -2134,8 +2137,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         } else if isRightSafe {
             heartX = playerRightX
         } else {
-            // На обох стінах у цій точці прірва — відкладаємо появу серця вище на 150 pt
-            nextHeartY = atY + 150.0
+            // На обох стінах у цій точці прірва — відкладаємо появу серця вище на 100 pt
+            nextHeartY = atY + 100.0
             return
         }
         
@@ -2825,13 +2828,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
-    /// Акуратна система мікро-частинок при підборі серця з пулу (без виділення пам'яті під час бігу)
+    /// Справжня система частинок у вигляді рубінового цілющого спрею дрібних частинок при підборі серця
     private func playHeartPickupEffect(at position: CGPoint) {
-        if let node = heartPickupPool.first(where: { !$0.inUse }) {
-            node.trigger(at: position, duration: 0.45)
-        } else if let oldest = heartPickupPool.first {
-            oldest.trigger(at: position, duration: 0.45)
-        }
+        guard let burst = GameScene.heartSprayTemplate.copy() as? SKNode else { return }
+        burst.position = position
+        addChild(burst)
+        burst.run(SKAction.sequence([
+            SKAction.wait(forDuration: 0.55),
+            SKAction.removeFromParent()
+        ]))
     }
     
     // MARK: - Lives & Mob Interaction
@@ -2907,13 +2912,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         playCoinPickupEffect(at: coin.position)
     }
     
-    /// Акуратна система мікро-частинок при підборі монети з пулу (без створення нод на льоту)
+    /// Справжня система частинок у вигляді золотистого спрею дрібних іскор при підборі монети
     private func playCoinPickupEffect(at position: CGPoint) {
-        if let node = coinPickupPool.first(where: { !$0.inUse }) {
-            node.trigger(at: position)
-        } else if let oldest = coinPickupPool.first {
-            oldest.trigger(at: position)
-        }
+        guard let burst = GameScene.coinSprayTemplate.copy() as? SKNode else { return }
+        burst.position = position
+        addChild(burst)
+        burst.run(SKAction.sequence([
+            SKAction.wait(forDuration: 0.50),
+            SKAction.removeFromParent()
+        ]))
     }
     
     // MARK: - Game Over & Abyss Fall
