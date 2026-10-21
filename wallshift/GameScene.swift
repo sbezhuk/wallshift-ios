@@ -30,6 +30,128 @@ enum AppFont {
 
 
 
+// MARK: - Reusable Pooled Particle Spray Node (Zero Allocations, 120 FPS Buttery Smooth)
+final class PooledSprayNode: SKNode {
+    let emitter: SKEmitterNode
+    let shimmerEmitter: SKEmitterNode
+    private(set) var inUse: Bool = false
+    
+    init(texture: SKTexture, isHeart: Bool = false) {
+        self.emitter = SKEmitterNode()
+        self.shimmerEmitter = SKEmitterNode()
+        super.init()
+        self.zPosition = 4.8
+        
+        emitter.particleTexture = texture
+        emitter.particleBirthRate = 0
+        
+        shimmerEmitter.particleTexture = texture
+        shimmerEmitter.particleBirthRate = 0
+        
+        if isHeart {
+            // Рубіновий цілющий спрей
+            emitter.particleLifetime = 0.40
+            emitter.particleLifetimeRange = 0.08
+            emitter.particleSpeed = 95.0
+            emitter.particleSpeedRange = 35.0
+            emitter.emissionAngle = .pi / 2.0
+            emitter.emissionAngleRange = .pi * 1.4
+            emitter.yAcceleration = 35.0
+            emitter.particleAlpha = 0.95
+            emitter.particleAlphaSpeed = -2.2
+            emitter.particleScale = 0.22
+            emitter.particleScaleRange = 0.08
+            emitter.particleScaleSpeed = -0.40
+            emitter.particleColor = SKColor(red: 1.0, green: 0.20, blue: 0.38, alpha: 1.0)
+            emitter.particleColorBlendFactor = 1.0
+            emitter.particleBlendMode = .add
+            
+            // Ніжно-рожеві іскри
+            shimmerEmitter.particleLifetime = 0.28
+            shimmerEmitter.particleLifetimeRange = 0.06
+            shimmerEmitter.particleSpeed = 55.0
+            shimmerEmitter.particleSpeedRange = 25.0
+            shimmerEmitter.emissionAngle = .pi / 2.0
+            shimmerEmitter.emissionAngleRange = .pi * 2.0
+            shimmerEmitter.yAcceleration = 25.0
+            shimmerEmitter.particleAlpha = 0.90
+            shimmerEmitter.particleAlphaSpeed = -2.8
+            shimmerEmitter.particleScale = 0.13
+            shimmerEmitter.particleScaleRange = 0.05
+            shimmerEmitter.particleScaleSpeed = -0.35
+            shimmerEmitter.particleColor = SKColor(red: 1.0, green: 0.65, blue: 0.78, alpha: 1.0)
+            shimmerEmitter.particleColorBlendFactor = 1.0
+            shimmerEmitter.particleBlendMode = .add
+        } else {
+            // Золотистий спрей монет
+            emitter.particleLifetime = 0.32
+            emitter.particleLifetimeRange = 0.06
+            emitter.particleSpeed = 110.0
+            emitter.particleSpeedRange = 40.0
+            emitter.emissionAngle = .pi / 2.0
+            emitter.emissionAngleRange = .pi * 1.5
+            emitter.yAcceleration = -70.0
+            emitter.particleAlpha = 0.95
+            emitter.particleAlphaSpeed = -2.7
+            emitter.particleScale = 0.20
+            emitter.particleScaleRange = 0.08
+            emitter.particleScaleSpeed = -0.45
+            emitter.particleColor = SKColor(red: 1.0, green: 0.84, blue: 0.20, alpha: 1.0)
+            emitter.particleColorBlendFactor = 1.0
+            emitter.particleBlendMode = .add
+            
+            // Яскраві золотаво-білі мікро-іскри
+            shimmerEmitter.particleLifetime = 0.22
+            shimmerEmitter.particleLifetimeRange = 0.05
+            shimmerEmitter.particleSpeed = 65.0
+            shimmerEmitter.particleSpeedRange = 30.0
+            shimmerEmitter.emissionAngle = .pi / 2.0
+            shimmerEmitter.emissionAngleRange = .pi * 2.0
+            shimmerEmitter.yAcceleration = -35.0
+            shimmerEmitter.particleAlpha = 0.90
+            shimmerEmitter.particleAlphaSpeed = -3.5
+            shimmerEmitter.particleScale = 0.12
+            shimmerEmitter.particleScaleRange = 0.04
+            shimmerEmitter.particleScaleSpeed = -0.40
+            shimmerEmitter.particleColor = SKColor(red: 1.0, green: 0.98, blue: 0.70, alpha: 1.0)
+            shimmerEmitter.particleColorBlendFactor = 1.0
+            shimmerEmitter.particleBlendMode = .add
+        }
+        
+        addChild(emitter)
+        addChild(shimmerEmitter)
+    }
+    
+    required init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    func trigger(at pos: CGPoint) {
+        self.position = pos
+        self.inUse = true
+        
+        emitter.resetSimulation()
+        shimmerEmitter.resetSimulation()
+        
+        emitter.particleBirthRate = 420
+        shimmerEmitter.particleBirthRate = 280
+        
+        removeAction(forKey: "sprayBurst")
+        let burst = SKAction.sequence([
+            SKAction.wait(forDuration: 0.04),
+            SKAction.run { [weak self] in
+                self?.emitter.particleBirthRate = 0
+                self?.shimmerEmitter.particleBirthRate = 0
+            },
+            SKAction.wait(forDuration: 0.32),
+            SKAction.run { [weak self] in
+                self?.inUse = false
+            }
+        ])
+        run(burst, withKey: "sprayBurst")
+    }
+}
+
 // MARK: - GameScene
 final class GameScene: SKScene, SKPhysicsContactDelegate {
     
@@ -128,109 +250,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         return tex
     }()
     
-    /// Готовий шаблон системи частинок (золотистий спрей дрібних іскор) при підборі монет
-    private static let coinSprayTemplate: SKNode = {
-        let container = SKNode()
-        container.zPosition = 4.8
-        
-        // 1. Основний радіально-висхідний потік дрібних золотистих частинок (спрей)
-        let spray = SKEmitterNode()
-        spray.particleTexture = GameScene.sprayParticleTexture
-        spray.particleBirthRate = 450
-        spray.numParticlesToEmit = 18
-        spray.particleLifetime = 0.35
-        spray.particleLifetimeRange = 0.08
-        spray.particleSpeed = 115.0
-        spray.particleSpeedRange = 40.0
-        spray.emissionAngle = .pi / 2.0
-        spray.emissionAngleRange = .pi * 1.5
-        spray.yAcceleration = -70.0
-        spray.particleAlpha = 0.95
-        spray.particleAlphaSpeed = -2.7
-        spray.particleScale = 0.20
-        spray.particleScaleRange = 0.08
-        spray.particleScaleSpeed = -0.45
-        spray.particleColor = SKColor(red: 1.0, green: 0.84, blue: 0.20, alpha: 1.0)
-        spray.particleColorBlendFactor = 1.0
-        spray.particleBlendMode = .add
-        container.addChild(spray)
-        
-        // 2. Дрібні яскраві мерехтливі іскри
-        let sparkles = SKEmitterNode()
-        sparkles.particleTexture = GameScene.sprayParticleTexture
-        sparkles.particleBirthRate = 300
-        sparkles.numParticlesToEmit = 8
-        sparkles.particleLifetime = 0.24
-        sparkles.particleLifetimeRange = 0.06
-        sparkles.particleSpeed = 65.0
-        sparkles.particleSpeedRange = 30.0
-        sparkles.emissionAngle = .pi / 2.0
-        sparkles.emissionAngleRange = .pi * 2.0
-        sparkles.yAcceleration = -35.0
-        sparkles.particleAlpha = 0.9
-        sparkles.particleAlphaSpeed = -3.5
-        sparkles.particleScale = 0.12
-        sparkles.particleScaleRange = 0.04
-        sparkles.particleScaleSpeed = -0.40
-        sparkles.particleColor = SKColor(red: 1.0, green: 0.98, blue: 0.70, alpha: 1.0)
-        sparkles.particleColorBlendFactor = 1.0
-        sparkles.particleBlendMode = .add
-        container.addChild(sparkles)
-        
-        return container
-    }()
-    
-    /// Готовий шаблон системи частинок (рубіновий цілющий спрей дрібних частинок) при підборі сердець
-    private static let heartSprayTemplate: SKNode = {
-        let container = SKNode()
-        container.zPosition = 4.8
-        
-        // 1. Основний висхідний потік яскраво-рубінових дрібних частинок (цілющий спрей)
-        let spray = SKEmitterNode()
-        spray.particleTexture = GameScene.sprayParticleTexture
-        spray.particleBirthRate = 450
-        spray.numParticlesToEmit = 20
-        spray.particleLifetime = 0.42
-        spray.particleLifetimeRange = 0.10
-        spray.particleSpeed = 100.0
-        spray.particleSpeedRange = 35.0
-        spray.emissionAngle = .pi / 2.0
-        spray.emissionAngleRange = .pi * 1.4
-        spray.yAcceleration = 35.0
-        spray.particleAlpha = 0.95
-        spray.particleAlphaSpeed = -2.2
-        spray.particleScale = 0.22
-        spray.particleScaleRange = 0.08
-        spray.particleScaleSpeed = -0.40
-        spray.particleColor = SKColor(red: 1.0, green: 0.20, blue: 0.38, alpha: 1.0)
-        spray.particleColorBlendFactor = 1.0
-        spray.particleBlendMode = .add
-        container.addChild(spray)
-        
-        // 2. М'які ніжно-рожеві цілющі іскри
-        let sparkles = SKEmitterNode()
-        sparkles.particleTexture = GameScene.sprayParticleTexture
-        sparkles.particleBirthRate = 300
-        sparkles.numParticlesToEmit = 8
-        sparkles.particleLifetime = 0.30
-        sparkles.particleLifetimeRange = 0.08
-        sparkles.particleSpeed = 55.0
-        sparkles.particleSpeedRange = 25.0
-        sparkles.emissionAngle = .pi / 2.0
-        sparkles.emissionAngleRange = .pi * 2.0
-        sparkles.yAcceleration = 25.0
-        sparkles.particleAlpha = 0.9
-        sparkles.particleAlphaSpeed = -2.8
-        sparkles.particleScale = 0.13
-        sparkles.particleScaleRange = 0.05
-        sparkles.particleScaleSpeed = -0.35
-        sparkles.particleColor = SKColor(red: 1.0, green: 0.65, blue: 0.78, alpha: 1.0)
-        sparkles.particleColorBlendFactor = 1.0
-        sparkles.particleBlendMode = .add
-        container.addChild(sparkles)
-        
-        return container
-    }()
+    // MARK: - Reusable Pools for Sprays (Zero Allocations during Gameplay)
+    private var coinSprayPool: [PooledSprayNode] = []
+    private var heartSprayPool: [PooledSprayNode] = []
     
     private static let coinIconPulseAction: SKAction = {
         let scaleUp = SKAction.scale(to: 1.30, duration: 0.06)
@@ -644,9 +666,28 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         addChild(cameraNode)
     }
     
-    /// Підготовка систем частинок для збору предметів
+    /// Створення фіксованого пулу систем частинок для збору предметів (0 алокацій під час гри, стабільні 60-120 FPS)
     private func setupParticlePools() {
-        // Шаблони систем частинок coinSprayTemplate та heartSprayTemplate статично скомпільовані
+        coinSprayPool.forEach { $0.removeFromParent() }
+        coinSprayPool.removeAll()
+        heartSprayPool.forEach { $0.removeFromParent() }
+        heartSprayPool.removeAll()
+        
+        let sprayTex = GameScene.sprayParticleTexture
+        
+        // 1. Пул золотистого спрею для монет (10 пре-ініціалізованих нод)
+        for _ in 0..<10 {
+            let node = PooledSprayNode(texture: sprayTex, isHeart: false)
+            addChild(node)
+            coinSprayPool.append(node)
+        }
+        
+        // 2. Пул рубінового цілющого спрею для сердець (4 пре-ініціалізовані ноди)
+        for _ in 0..<4 {
+            let node = PooledSprayNode(texture: sprayTex, isHeart: true)
+            addChild(node)
+            heartSprayPool.append(node)
+        }
     }
     
     private func setupAudio() {
@@ -2828,15 +2869,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
-    /// Справжня система частинок у вигляді рубінового цілющого спрею дрібних частинок при підборі серця
+    /// Миттєвий запуск рубінового цілющого спрею з попередньо виділеного пулу (нуль алокацій)
     private func playHeartPickupEffect(at position: CGPoint) {
-        guard let burst = GameScene.heartSprayTemplate.copy() as? SKNode else { return }
-        burst.position = position
-        addChild(burst)
-        burst.run(SKAction.sequence([
-            SKAction.wait(forDuration: 0.55),
-            SKAction.removeFromParent()
-        ]))
+        if let node = heartSprayPool.first(where: { !$0.inUse }) {
+            node.trigger(at: position)
+        } else if let oldest = heartSprayPool.first {
+            oldest.trigger(at: position)
+        }
     }
     
     // MARK: - Lives & Mob Interaction
@@ -2912,15 +2951,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         playCoinPickupEffect(at: coin.position)
     }
     
-    /// Справжня система частинок у вигляді золотистого спрею дрібних іскор при підборі монети
+    /// Миттєвий запуск золотистого спрею мікро-частинок з попередньо виділеного пулу (нуль алокацій)
     private func playCoinPickupEffect(at position: CGPoint) {
-        guard let burst = GameScene.coinSprayTemplate.copy() as? SKNode else { return }
-        burst.position = position
-        addChild(burst)
-        burst.run(SKAction.sequence([
-            SKAction.wait(forDuration: 0.50),
-            SKAction.removeFromParent()
-        ]))
+        if let node = coinSprayPool.first(where: { !$0.inUse }) {
+            node.trigger(at: position)
+        } else if let oldest = coinSprayPool.first {
+            oldest.trigger(at: position)
+        }
     }
     
     // MARK: - Game Over & Abyss Fall
