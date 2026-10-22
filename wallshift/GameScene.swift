@@ -2288,9 +2288,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             return
         }
         
-        // 2. Прадавня статуя, портал або кришталева колона / розсип — горизонтально закріплені на скелі (основа в скелі, вершина в бік каньйону)
-        if texName.contains("statue") || texName.contains("portal") || texName.contains("pillar") || texName.contains("pile") {
-            let landmarkHeight: CGFloat = (texName.contains("statue") || texName.contains("pillar")) ? CGFloat.random(in: 74...86) : CGFloat.random(in: 70...80)
+        // 2. Прадавня статуя, портал або кришталева колона / розсип / склеп — горизонтально закріплені на скелі (основа в скелі, вершина в бік каньйону)
+        if texName.contains("statue") || texName.contains("portal") || texName.contains("pillar") || texName.contains("pile") || texName.contains("crypt") || texName.contains("coffin") {
+            let landmarkHeight: CGFloat = (texName.contains("statue") || texName.contains("pillar") || texName.contains("crypt")) ? CGFloat.random(in: 74...86) : CGFloat.random(in: 70...80)
             let landmarkWidth = landmarkHeight * aspect
             let landmark = SKSpriteNode(texture: tex, size: CGSize(width: landmarkWidth, height: landmarkHeight))
             landmark.zPosition = -5

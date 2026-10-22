@@ -266,6 +266,78 @@ final class ThemeManager {
             guiCircleBtnName: "gui_btn_circle_blue",
             guiCardFrameName: "gui_card_blue",
             guiAccentColor: SKColor(red: 0.35, green: 0.75, blue: 1.0, alpha: 1.0)
+        ),
+        
+        // 4. Shadow Wraith (Unlockable in market for 100 000 coins)
+        ThemeData(
+            id: "shadow_wraith",
+            name: "SHADOW WRAITH",
+            subtitle: "Forbidden Graveyard • Wraith & Phantoms • Fire Arrows",
+            price: 100000,
+            previewImageName: "wraith_preview",
+            heroRunPrefix: "wraith_run_",
+            heroRunCount: 12,
+            wallTileName: "graveyard_wall_ground",
+            wallDirtTileName: "graveyard_wall_dirt",
+            wallRockTileName: "graveyard_wall_rock",
+            cliffLowerTileName: "graveyard_cliff_lower",
+            cliffUpperTileName: "graveyard_cliff_upper",
+            backgroundTextureName: "graveyard_bg",
+            backgroundTopColor: SKColor(red: 0.20, green: 0.16, blue: 0.24, alpha: 1.0),
+            backgroundBottomColor: SKColor(red: 0.21, green: 0.19, blue: 0.26, alpha: 1.0),
+            backgroundOverlayColor: SKColor(red: 0.14, green: 0.08, blue: 0.20, alpha: 1.0),
+            backgroundOverlayAlpha: 0.15,
+            treeTextureNames: [
+                "deco_graveyard_tree_01",
+                "deco_graveyard_tree_02",
+                "deco_graveyard_crypt",
+                "deco_graveyard_coffin"
+            ],
+            decorTextureNames: [
+                "deco_graveyard_bush_01",
+                "deco_graveyard_bush_02",
+                "deco_graveyard_bone",
+                "deco_graveyard_skull",
+                "deco_graveyard_headstone_01",
+                "deco_graveyard_headstone_02",
+                "deco_graveyard_headstone_03",
+                "deco_graveyard_lantern",
+                "deco_graveyard_fire",
+                "deco_graveyard_fence_01",
+                "deco_graveyard_fence_02",
+                "deco_graveyard_rock_01",
+                "deco_graveyard_rock_02",
+                "deco_graveyard_rock_03",
+                "deco_graveyard_rock_04",
+                "deco_graveyard_rock_05",
+                "deco_graveyard_rock_06"
+            ],
+            signpostTextureNames: [
+                "deco_graveyard_sign_01",
+                "deco_graveyard_sign_02",
+                "deco_graveyard_sign_03",
+                "deco_graveyard_sign_04",
+                "deco_graveyard_sign_05",
+                "deco_graveyard_sign_06"
+            ],
+            patrollerPrefix: "wraith_patroller_walk_",
+            patrollerFrameCount: 12,
+            shooterPrefix: "wraith_shooter_walk_",
+            shooterFrameCount: 12,
+            projectileType: .fire,
+            heartTextureName: "graveyard_heart",
+            coinTexturePrefix: "graveyard_coin_",
+            coinFrameCount: 6,
+            guiCoinIconName: "graveyard_coin_0",
+            guiBannerName: "gui_banner_blue",
+            guiBannerShadowColor: SKColor(red: 0.04, green: 0.02, blue: 0.08, alpha: 0.95),
+            guiStatsBarName: "gui_bar_blue",
+            guiStatsTextColor: SKColor(red: 0.92, green: 0.90, blue: 0.98, alpha: 1.0),
+            guiPrimaryBtnName: "gui_btn_large_blue",
+            guiSecondaryBtnName: "gui_btn_small_orange",
+            guiCircleBtnName: "gui_btn_circle_blue",
+            guiCardFrameName: "gui_card_blue",
+            guiAccentColor: SKColor(red: 0.55, green: 0.45, blue: 0.85, alpha: 1.0)
         )
     ]
     
