@@ -372,6 +372,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     /// Прапорець падіння героя в прірву (відв'язує Y-координату від камери)
     private var isPlayerFalling: Bool = false
     
+    /// Запобіжник повторного відтворення аудіо закінчення гри
+    private var hasPlayedGameOverSound: Bool = false
+    
     /// Делеговані стани героя
     var isOnLeftWall: Bool {
         return player.isOnLeftWall
@@ -674,6 +677,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         isPlayerFalling = false
         isGameOver = false
+        hasPlayedGameOverSound = false
         currentLives = GameScene.maxLives
         score = 0
         coinsCollected = 0
@@ -797,8 +801,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         GameAudio.shared.playJump()
     }
     
-    /// Відтворення звуку закінчення гри при програші
+    /// Відтворення звуку закінчення гри при програші (гарантовано один раз за забіг)
     func playGameOverSound() {
+        guard !hasPlayedGameOverSound else { return }
+        hasPlayedGameOverSound = true
         GameAudio.shared.playGameOver()
     }
     
@@ -2114,6 +2120,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // Починається підйом камери та ігровий процес
         gameState = .playing
+        hasPlayedGameOverSound = false
         runStartTime = CACurrentMediaTime()
         DynamicAdManager.shared.notifyRunStarted()
         lastUpdateTime = 0
@@ -4181,6 +4188,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         isPaused = false
         isGameOver = false
         isPlayerFalling = false
+        hasPlayedGameOverSound = false
         gameState = .playing
         lastUpdateTime = 0
         lastAbyssHitTime = 0
