@@ -13,10 +13,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Попередній запуск та прогрів аудіосистеми до запуску першої сцени
-        DispatchQueue.global(qos: .userInitiated).async {
-            GameAudio.shared.setupIfNeeded()
-        }
         return true
     }
 
