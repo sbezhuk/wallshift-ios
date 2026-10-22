@@ -839,7 +839,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         hudNode.addChild(scoreLabel)
         
         // 3. Лічильник монет праворуч під очками
-        let coinIcon = SKSpriteNode(imageNamed: "coin_0")
+        let coinIcon = SKSpriteNode(imageNamed: currentTheme.guiCoinIconName)
         coinIcon.size = CGSize(width: 18.0, height: 18.0)
         coinIcon.position = CGPoint(x: (size.width / 2.0) - 72.0, y: topY - 26.0)
         coinIcon.zPosition = 100
@@ -993,7 +993,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         bestScoreText.zPosition = 2
         card.addChild(bestScoreText)
         
-        let coinIcon = SKSpriteNode(imageNamed: "gui_icon_coin")
+        let coinIcon = SKSpriteNode(imageNamed: currentTheme.guiCoinIconName)
+        coinIcon.name = "menuCoinsIcon"
         coinIcon.size = CGSize(width: 22.0, height: 22.0)
         coinIcon.position = CGPoint(x: cardW * 0.12, y: 0.0)
         coinIcon.zPosition = 2
@@ -1259,7 +1260,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         balanceNode.zPosition = 5
         card.addChild(balanceNode)
         
-        let coinIcon = SKSpriteNode(imageNamed: "gui_icon_coin")
+        let coinIcon = SKSpriteNode(imageNamed: currentTheme.guiCoinIconName)
         coinIcon.name = "shopCoinIcon"
         coinIcon.size = CGSize(width: 24.0, height: 24.0)
         
@@ -1340,6 +1341,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // Оновлюємо лічильник балансу
         if let balance = card.childNode(withName: "shopBalanceNode")?.childNode(withName: "shopBalanceLabel") as? SKLabelNode,
            let coin = card.childNode(withName: "shopBalanceNode")?.childNode(withName: "shopCoinIcon") as? SKSpriteNode {
+            coin.texture = SKTexture(imageNamed: ThemeManager.shared.currentTheme.guiCoinIconName)
             balance.text = totalCoins.formattedWithSeparator
             let balSpacing: CGFloat = 8.0
             let totalW = coin.size.width + balSpacing + balance.frame.width
@@ -1493,7 +1495,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             btnBg.zPosition = 1
             actionBtnNode.addChild(btnBg)
             
-            let coin = SKSpriteNode(imageNamed: "gui_icon_coin")
+            let coin = SKSpriteNode(imageNamed: theme.guiCoinIconName)
             coin.name = "shopActionButton"
             coin.size = CGSize(width: 19.0, height: 19.0)
             coin.zPosition = 3
@@ -1587,7 +1589,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         bgSprite.addChild(label)
         self.shopAdRewardLabel = label
         
-        let coinIcon = SKSpriteNode(imageNamed: "gui_icon_coin_outline")
+        let coinIcon = SKSpriteNode(imageNamed: currentTheme.guiCoinIconName)
         coinIcon.name = "shopAdRewardButton"
         coinIcon.size = CGSize(width: 20.0, height: 20.0)
         coinIcon.zPosition = 3
@@ -1636,6 +1638,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         
         let isAvailable = ShopAdRewardManager.shared.isRewardAvailable
+        coin.texture = SKTexture(imageNamed: currentTheme.guiCoinIconName)
         coin.isHidden = false
         
         if isAvailable {
@@ -1900,6 +1903,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         for heart in heartHUDNodes {
             heart.texture = heartTex
         }
+        hudCoinIcon?.texture = SKTexture(imageNamed: theme.guiCoinIconName)
         
         // 3. Повне перезавантаження траси, стін, прірв та декорацій під нову тему (у режимі меню)
         if gameState == .menu {
@@ -1932,6 +1936,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 card.texture = SKTexture(imageNamed: theme.guiStatsBarName)
                 (card.childNode(withName: "menuBestScoreText") as? SKLabelNode)?.fontColor = theme.guiStatsTextColor
                 (card.childNode(withName: "menuCoinsText") as? SKLabelNode)?.fontColor = theme.guiStatsTextColor
+                (card.childNode(withName: "menuCoinsIcon") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCoinIconName)
             }
             (menu.childNode(withName: "menuPlayButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiPrimaryBtnName)
             (menu.childNode(withName: "menuShopButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiSecondaryBtnName)
@@ -1944,6 +1949,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             (card.childNode(withName: "shopCloseButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
             (card.childNode(withName: "shopPrevButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
             (card.childNode(withName: "shopNextButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
+            if let balanceNode = card.childNode(withName: "shopBalanceNode") {
+                (balanceNode.childNode(withName: "shopCoinIcon") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCoinIconName)
+            }
             updateShopAdRewardButtonState()
         }
         
@@ -3425,7 +3433,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         scoreSummary.zPosition = 4
         statsBar.addChild(scoreSummary)
         
-        let coin = SKSpriteNode(imageNamed: "gui_icon_coin")
+        let coin = SKSpriteNode(imageNamed: currentTheme.guiCoinIconName)
         coin.size = CGSize(width: 20.0, height: 20.0)
         coin.position = CGPoint(x: -statsW * 0.38, y: -14.0)
         coin.zPosition = 4
@@ -3491,7 +3499,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             dialogCard.addChild(doubleBtn)
             self.gameOverDoubleCoinsBtn = doubleBtn
             
-            let coinIcon = SKSpriteNode(imageNamed: "gui_icon_coin")
+            let coinIcon = SKSpriteNode(imageNamed: currentTheme.guiCoinIconName)
             coinIcon.name = doubleBtn.name
             coinIcon.size = CGSize(width: 22.0, height: 22.0)
             coinIcon.position = CGPoint(x: -doubleBtnW * 0.30, y: 0)

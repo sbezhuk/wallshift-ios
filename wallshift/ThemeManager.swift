@@ -54,6 +54,11 @@ struct ThemeData {
     // Items
     let heartTextureName: String
     
+    // Coins
+    let coinTexturePrefix: String
+    let coinFrameCount: Int
+    let guiCoinIconName: String
+    
     // GUI Styling
     let guiBannerName: String
     let guiBannerShadowColor: SKColor
@@ -105,6 +110,9 @@ final class ThemeManager {
             shooterFrameCount: 24,
             projectileType: .fire,
             heartTextureName: "life_hearth",
+            coinTexturePrefix: "autumn_coin_",
+            coinFrameCount: 6,
+            guiCoinIconName: "autumn_coin_0",
             guiBannerName: "gui_banner_orange",
             guiBannerShadowColor: SKColor(red: 0.12, green: 0.05, blue: 0.02, alpha: 0.95),
             guiStatsBarName: "gui_bar_orange",
@@ -174,6 +182,9 @@ final class ThemeManager {
             shooterFrameCount: 24,
             projectileType: .water,
             heartTextureName: "forest_heart",
+            coinTexturePrefix: "forest_coin_",
+            coinFrameCount: 6,
+            guiCoinIconName: "forest_coin_0",
             guiBannerName: "gui_banner_green",
             guiBannerShadowColor: SKColor(red: 0.02, green: 0.12, blue: 0.04, alpha: 0.95),
             guiStatsBarName: "gui_bar_green",
@@ -243,6 +254,9 @@ final class ThemeManager {
             shooterFrameCount: 24,
             projectileType: .water,
             heartTextureName: "crystal_heart",
+            coinTexturePrefix: "crystal_coin_",
+            coinFrameCount: 6,
+            guiCoinIconName: "crystal_coin_0",
             guiBannerName: "gui_banner_blue",
             guiBannerShadowColor: SKColor(red: 0.02, green: 0.06, blue: 0.18, alpha: 0.95),
             guiStatsBarName: "gui_bar_blue",

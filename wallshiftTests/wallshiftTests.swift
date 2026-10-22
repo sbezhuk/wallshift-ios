@@ -91,4 +91,24 @@ struct wallshiftTests {
         NetworkMonitor.shared.simulateConnectionState(nil)
         manager.resetCooldownForTesting()
     }
+
+    @Test func testThemeCoinsConfiguration() async throws {
+        let themes = ThemeManager.shared.themes
+        #expect(!themes.isEmpty)
+        
+        var guiCoinNames = Set<String>()
+        for theme in themes {
+            #expect(!theme.guiCoinIconName.isEmpty)
+            #expect(!theme.coinTexturePrefix.isEmpty)
+            #expect(theme.coinFrameCount == 6)
+            
+            guiCoinNames.insert(theme.guiCoinIconName)
+            
+            let textures = CoinNode.textures(for: theme)
+            #expect(textures.count == theme.coinFrameCount)
+        }
+        
+        // У кожної теми мають бути свої унікальні іконки монеток
+        #expect(guiCoinNames.count == themes.count)
+    }
 }

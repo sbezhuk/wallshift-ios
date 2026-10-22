@@ -16,49 +16,69 @@ final class CoinNode: SKSpriteNode {
         static let visualSize = CGSize(width: 26.0, height: 26.0)
         static let collisionRadius: CGFloat = 16.0
         static let timePerFrame: TimeInterval = 0.08
-        static let frameCount: Int = 6
-        static let framePrefix: String = "coin_"
     }
     
     // MARK: - Properties
     private(set) var isCollected: Bool = false
     
-    // Кешовані текстури анімації обертання монети (Assets/Sprites/Items/Coins/coin_X)
-    private static let spinTextures: [SKTexture] = {
+    // Кешовані текстури анімації обертання монети під кожну тему
+    private static var themeTexturesCache: [String: [SKTexture]] = [:]
+    private static var themeActionCache: [String: SKAction] = [:]
+    
+    static func textures(for theme: ThemeData) -> [SKTexture] {
+        if let cached = themeTexturesCache[theme.id] {
+            return cached
+        }
         var textures: [SKTexture] = []
-        for i in 0..<Constants.frameCount {
-            let name = "\(Constants.framePrefix)\(i)"
+        for i in 0..<theme.coinFrameCount {
+            let name = "\(theme.coinTexturePrefix)\(i)"
             let tex = SKTexture(imageNamed: name)
             tex.filteringMode = .linear
             textures.append(tex)
         }
+        // Безпечний фолбек на класичні монети у разі потреби
+        if textures.isEmpty {
+            for i in 0..<6 {
+                textures.append(SKTexture(imageNamed: "coin_\(i)"))
+            }
+        }
+        themeTexturesCache[theme.id] = textures
         return textures
-    }()
+    }
     
-    private static let spinAction: SKAction = {
-        return SKAction.repeatForever(
-            SKAction.animate(with: CoinNode.spinTextures, timePerFrame: Constants.timePerFrame, resize: false, restore: true)
+    static func spinAction(for theme: ThemeData) -> SKAction {
+        if let cached = themeActionCache[theme.id] {
+            return cached
+        }
+        let textures = textures(for: theme)
+        let action = SKAction.repeatForever(
+            SKAction.animate(with: textures, timePerFrame: Constants.timePerFrame, resize: false, restore: true)
         )
-    }()
+        themeActionCache[theme.id] = action
+        return action
+    }
     
     // MARK: - Initialization
-    init() {
-        let initialTexture = CoinNode.spinTextures.first ?? SKTexture()
+    init(theme: ThemeData = ThemeManager.shared.currentTheme) {
+        let textures = CoinNode.textures(for: theme)
+        let initialTexture = textures.first ?? SKTexture()
         super.init(texture: initialTexture, color: .clear, size: Constants.visualSize)
         
         name = "CoinNode"
         zPosition = 4.2
         setupPhysics()
-        startSpinAnimation()
+        startSpinAnimation(theme: theme)
     }
     
     required init?(coder aDecoder: NSCoder) {
-        let initialTexture = CoinNode.spinTextures.first ?? SKTexture()
+        let theme = ThemeManager.shared.currentTheme
+        let textures = CoinNode.textures(for: theme)
+        let initialTexture = textures.first ?? SKTexture()
         super.init(texture: initialTexture, color: .clear, size: Constants.visualSize)
         name = "CoinNode"
         zPosition = 4.2
         setupPhysics()
-        startSpinAnimation()
+        startSpinAnimation(theme: theme)
     }
     
     // MARK: - Physics Setup
@@ -72,9 +92,9 @@ final class CoinNode: SKSpriteNode {
     }
     
     // MARK: - Animations
-    private func startSpinAnimation() {
-        guard !CoinNode.spinTextures.isEmpty else { return }
-        run(CoinNode.spinAction, withKey: "coinSpin")
+    private func startSpinAnimation(theme: ThemeData) {
+        let action = CoinNode.spinAction(for: theme)
+        run(action, withKey: "coinSpin")
     }
     
     /// Анімація підбору монети з ефектом сплеску та розчинення
