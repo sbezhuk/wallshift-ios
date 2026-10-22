@@ -398,8 +398,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     
     // Ноди та елементи головного меню
     var menuNode: SKNode?
-    private var soundIconSprite: SKSpriteNode?
+    var soundIconSprite: SKSpriteNode?
     private var menuCoinsText: SKLabelNode?
+    
+    // Ноди та елементи налаштувань (Settings)
+    var settingsNode: SKNode?
+    var isDraggingMusicSlider: Bool = false
+    var isDraggingSFXSlider: Bool = false
     
     // Ноди та елементи системи досягнень
     var achievementsNode: SKNode?
@@ -771,10 +776,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         GameAudio.shared.startBGM(lowVolume: lowVolume)
     }
     
-    private func toggleMute() {
-        let isMuted = GameAudio.shared.toggleMute()
+    func updateSoundMenuIcon() {
+        let isMuted = GameAudio.shared.isMuted
         let iconName = isMuted ? "gui_icon_audio_off" : "gui_icon_audio_on"
         soundIconSprite?.texture = SKTexture(imageNamed: iconName)
+    }
+    
+    func toggleMute() {
+        _ = GameAudio.shared.toggleMute()
+        updateSoundMenuIcon()
     }
     
     /// Плавне спадання тону/гучності фонової музики (fade-out 2.0 с) при завершенні гри
@@ -2054,6 +2064,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             (achCard.childNode(withName: "achievementsNextButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
         }
         
+        // 5c. Оновлення елементів інтерфейсу налаштувань (якщо відкритий)
+        if let settingsCard = settingsNode?.childNode(withName: "settingsCard") {
+            (settingsCard.childNode(withName: "settingsBanner") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiBannerName)
+            (settingsCard.childNode(withName: "settingsCloseButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
+            refreshSettingsUI()
+        }
+        
         // 6. Оновлення лічильника меню
         updateMenuCoinsDisplay()
     }
@@ -3116,6 +3133,12 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         guard let touch = touches.first else { return }
         let locInCamera = touch.location(in: cameraNode)
         
+        // -1a. Взаємодія з відкритим вікном налаштувань (Settings)
+        if let _ = settingsNode {
+            handleSettingsTouchesBegan(touch: touch, locInCamera: locInCamera)
+            return
+        }
+        
         // -1. Взаємодія з відкритим вікном досягнень
         if let _ = achievementsNode {
             let touchedNodes = cameraNode.nodes(at: locInCamera)
@@ -3241,7 +3264,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                     return
                 }
                 if name == "menuSoundButton" {
-                    toggleMute()
+                    playJumpSound()
+                    showSettingsOverlay()
                     return
                 }
                 if name == "menuExitButton" {
@@ -3364,6 +3388,29 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 }
             }
         }
+    }
+    
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = touches.first else { return }
+        let locInCamera = touch.location(in: cameraNode)
+        if let _ = settingsNode {
+            handleSettingsTouchesMoved(touch: touch, locInCamera: locInCamera)
+            return
+        }
+    }
+    
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = touches.first else { return }
+        let locInCamera = touch.location(in: cameraNode)
+        if let _ = settingsNode {
+            handleSettingsTouchesEnded(touch: touch, locInCamera: locInCamera)
+            return
+        }
+    }
+    
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        isDraggingMusicSlider = false
+        isDraggingSFXSlider = false
     }
     
     // MARK: - Game Loop

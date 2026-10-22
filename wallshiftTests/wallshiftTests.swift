@@ -272,4 +272,56 @@ struct wallshiftTests {
         
         adManager.resetForTesting()
     }
+
+    @Test func testAudioSettingsMasterMute() async throws {
+        let initialMuted = GameAudio.shared.isMuted
+        defer {
+            GameAudio.shared.setMuted(initialMuted)
+        }
+        
+        GameAudio.shared.setMuted(false)
+        #expect(GameAudio.shared.isMuted == false)
+        
+        let toggled = GameAudio.shared.toggleMute()
+        #expect(toggled == true)
+        #expect(GameAudio.shared.isMuted == true)
+        
+        let untoggled = GameAudio.shared.toggleMute()
+        #expect(untoggled == false)
+        #expect(GameAudio.shared.isMuted == false)
+        
+        GameAudio.shared.setMuted(true)
+        #expect(GameAudio.shared.isMuted == true)
+    }
+
+    @Test func testAudioSettingsVolumeControls() async throws {
+        let initialBGM = GameAudio.shared.bgmVolume
+        let initialSFX = GameAudio.shared.sfxVolume
+        defer {
+            GameAudio.shared.bgmVolume = initialBGM
+            GameAudio.shared.sfxVolume = initialSFX
+        }
+        
+        // Перевірка BGM
+        GameAudio.shared.bgmVolume = 0.5
+        #expect(abs(GameAudio.shared.bgmVolume - 0.5) < 0.01)
+        
+        // Clamping BGM
+        GameAudio.shared.bgmVolume = 1.5
+        #expect(abs(GameAudio.shared.bgmVolume - 1.0) < 0.01)
+        
+        GameAudio.shared.bgmVolume = -0.5
+        #expect(abs(GameAudio.shared.bgmVolume - 0.0) < 0.01)
+        
+        // Перевірка SFX
+        GameAudio.shared.sfxVolume = 0.7
+        #expect(abs(GameAudio.shared.sfxVolume - 0.7) < 0.01)
+        
+        // Clamping SFX
+        GameAudio.shared.sfxVolume = 2.0
+        #expect(abs(GameAudio.shared.sfxVolume - 1.0) < 0.01)
+        
+        GameAudio.shared.sfxVolume = -0.2
+        #expect(abs(GameAudio.shared.sfxVolume - 0.0) < 0.01)
+    }
 }
