@@ -28,6 +28,9 @@ final class GameAudio {
     // MARK: - Стан гучності та Mute
     private var isLowVolumeActive: Bool = false
     
+    /// Прапорець, що сигналізує про активний показ реклами
+    private(set) var isAdActive: Bool = false
+    
     var isMuted: Bool {
         get { UserDefaults.standard.bool(forKey: "WallShiftMuted") }
         set { UserDefaults.standard.set(newValue, forKey: "WallShiftMuted") }
@@ -236,7 +239,7 @@ final class GameAudio {
         case .ended:
             guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else { return }
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            if options.contains(.shouldResume) && !isMuted {
+            if options.contains(.shouldResume) && !isMuted && !isAdActive {
                 audioQueue.async { [weak self] in
                     self?.ensureEngineRunning()
                 }
@@ -248,7 +251,7 @@ final class GameAudio {
     }
     
     @objc private func handleWillEnterForeground() {
-        guard !isMuted else { return }
+        guard !isAdActive, !isMuted else { return }
         audioQueue.async { [weak self] in
             self?.ensureEngineRunning()
         }
@@ -273,10 +276,10 @@ final class GameAudio {
         gameOverNode.volume = GameAudio.gameOverVolume * eff
     }
     
-    /// Оновлення гучності BGM плеєра з урахуванням поточного bgmVolume та isMuted
+    /// Оновлення гучності BGM плеєра з урахуванням поточного bgmVolume, isMuted та показу реклами
     func applyBGMVolume(fadeDuration: TimeInterval = 0) {
         guard let player = bgmPlayer else { return }
-        if isMuted || bgmVolume <= 0.001 {
+        if isAdActive || isMuted || bgmVolume <= 0.001 {
             if fadeDuration > 0 && player.isPlaying {
                 player.setVolume(0.0, fadeDuration: fadeDuration)
                 DispatchQueue.main.asyncAfter(deadline: .now() + fadeDuration) { [weak player] in
@@ -353,12 +356,13 @@ final class GameAudio {
     /// Запуск або відновлення фонової музики
     func startBGM(lowVolume: Bool = false) {
         self.isLowVolumeActive = lowVolume
+        guard !isAdActive else { return }
         applyBGMVolume()
     }
     
     /// Плавна зміна гучності фонової музики
     func setBGMVolume(_ volume: Float, fadeDuration: TimeInterval = 0) {
-        guard let player = bgmPlayer, !isMuted, bgmVolume > 0.001 else {
+        guard let player = bgmPlayer, !isAdActive, !isMuted, bgmVolume > 0.001 else {
             bgmPlayer?.pause()
             return
         }
@@ -377,7 +381,7 @@ final class GameAudio {
     
     /// Відновлення фонової музики
     func resumeBGM() {
-        guard !isMuted, bgmVolume > 0.001 else { return }
+        guard !isAdActive, !isMuted, bgmVolume > 0.001 else { return }
         applyBGMVolume()
     }
     
@@ -394,6 +398,33 @@ final class GameAudio {
         } else {
             player.pause()
         }
+    }
+    
+    // MARK: - Керування звуком під час реклами (Ads Lifecycle)
+    
+    /// Викликається безпосередньо перед відкриттям будь-якої реклами (Rewarded / Interstitial)
+    func notifyAdWillPresent() {
+        guard !isAdActive else { return }
+        isAdActive = true
+        pauseBGM()
+    }
+    
+    /// Викликається після закриття реклами (успішно, з помилкою чи скасовано)
+    func notifyAdDidDismiss() {
+        guard isAdActive else { return }
+        isAdActive = false
+        
+        // Відновлюємо налаштування сесії на випадок, якщо стороннє SDK реклами змінило категорію або деактивувало сесію
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+        try? session.setActive(true)
+        
+        audioQueue.async { [weak self] in
+            self?.ensureEngineRunning()
+        }
+        
+        // Відновлюємо фонову музику гри
+        resumeBGM()
     }
     
     // MARK: - Загальне перемикання звуку (Master Mute / Unmute)

@@ -115,6 +115,8 @@ final class UnityAdsManager: NSObject {
         #if targetEnvironment(simulator)
         if !isRewardedAdLoaded {
             print("[UnityAdsManager] Running in Simulator: presenting simulated rewarded ad dialog")
+            isAdShowing = true
+            GameAudio.shared.notifyAdWillPresent()
             showSimulatorAdAlert(from: viewController, message: customMessage, actionTitle: actionTitle)
             return
         }
@@ -122,12 +124,16 @@ final class UnityAdsManager: NSObject {
         
         if isRewardedAdLoaded {
             isAdShowing = true
+            GameAudio.shared.notifyAdWillPresent()
             UnityAds.show(viewController, placementId: rewardedPlacementId, showDelegate: self)
         } else {
             #if targetEnvironment(simulator)
+            isAdShowing = true
+            GameAudio.shared.notifyAdWillPresent()
             showSimulatorAdAlert(from: viewController, message: customMessage, actionTitle: actionTitle)
             #else
             isAdShowing = true
+            GameAudio.shared.notifyAdWillPresent()
             UnityAds.show(viewController, placementId: rewardedPlacementId, showDelegate: self)
             #endif
         }
@@ -149,10 +155,13 @@ final class UnityAdsManager: NSObject {
         
         if isInterstitialAdLoaded {
             isAdShowing = true
+            GameAudio.shared.notifyAdWillPresent()
             UnityAds.show(viewController, placementId: interstitialPlacementId, showDelegate: self)
         } else {
             #if targetEnvironment(simulator)
             print("[UnityAdsManager] Running in Simulator: presenting simulated interstitial ad dialog")
+            isAdShowing = true
+            GameAudio.shared.notifyAdWillPresent()
             showSimulatorInterstitialAlert(from: viewController)
             #else
             loadInterstitialAd()
@@ -170,6 +179,7 @@ final class UnityAdsManager: NSObject {
         )
         alert.addAction(UIAlertAction(title: "Close Ad", style: .default, handler: { [weak self] _ in
             self?.isAdShowing = false
+            GameAudio.shared.notifyAdDidDismiss()
             self?.onAdSuccess?()
             self?.onAdSuccess = nil
             self?.onAdFailure = nil
@@ -191,12 +201,14 @@ final class UnityAdsManager: NSObject {
         )
         alert.addAction(UIAlertAction(title: actionTitle, style: .default, handler: { [weak self] _ in
             self?.isAdShowing = false
+            GameAudio.shared.notifyAdDidDismiss()
             self?.onAdSuccess?()
             self?.onAdSuccess = nil
             self?.onAdFailure = nil
         }))
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: { [weak self] _ in
             self?.isAdShowing = false
+            GameAudio.shared.notifyAdDidDismiss()
             self?.onAdFailure?("Ad was cancelled")
             self?.onAdSuccess = nil
             self?.onAdFailure = nil
@@ -256,6 +268,7 @@ extension UnityAdsManager: UnityAdsShowDelegate {
         }
         
         DispatchQueue.main.async { [weak self] in
+            GameAudio.shared.notifyAdDidDismiss()
             if state == .showCompletionStateCompleted || placementId == self?.interstitialPlacementId {
                 self?.onAdSuccess?()
             } else {
@@ -278,6 +291,7 @@ extension UnityAdsManager: UnityAdsShowDelegate {
         }
         
         DispatchQueue.main.async { [weak self] in
+            GameAudio.shared.notifyAdDidDismiss()
             #if targetEnvironment(simulator)
             self?.onAdSuccess?()
             #else
@@ -290,6 +304,7 @@ extension UnityAdsManager: UnityAdsShowDelegate {
     
     func unityAdsShowStart(_ placementId: String) {
         print("[UnityAdsManager] Ad show started for \(placementId)")
+        GameAudio.shared.notifyAdWillPresent()
     }
     
     func unityAdsShowClick(_ placementId: String) {
