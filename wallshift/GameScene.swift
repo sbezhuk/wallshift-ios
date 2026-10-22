@@ -172,7 +172,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // Базова та мінімальна тривалість стрибка між стінами (в секундах)
         static let baseJumpDuration: TimeInterval = 0.28
-        static let minJumpDuration: TimeInterval = 0.19
+        static let minJumpDuration: TimeInterval = 0.175
         
         // Колірна гамма підкладки фону (теплий осінній тон)
         static let backgroundColor = SKColor(red: 0.18, green: 0.12, blue: 0.09, alpha: 1.0)
@@ -470,53 +470,76 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         return score / 50
     }
     
-    /// Поточна швидкість підйому камери: безперервне, плавне наростання темпу гри в стилі Subway Surfers.
-    /// Починається з бадьорого комфортного бігу (300 pt/s) і без жодних різких ривків
-    /// чи сходинок плавно прискорюється в міру забігу до спортивного максимуму (~645 pt/s).
+    /// Поточна швидкість підйому камери: неперервне наростання темпу гри в стилі Subway Surfers.
+    /// Починається з бадьорого комфортного бігу (300 pt/s) і плавно прискорюється
+    /// до ~650 pt/s до 1000-2000 очок.
+    /// Після 2000 очок темп продовжує безупинно наростати:
+    /// 3000 очок (~725 pt/s), 4000 очок (~780 pt/s), 5000 очок (~825 pt/s) і далі без обмежень,
+    /// забезпечуючи нескінченний приплив адреналіну для справжніх майстрів.
     private var currentUpwardSpeed: CGFloat {
         let s = CGFloat(max(0, score))
-        let acceleration = 340.0 * (1.0 - exp(-s / 450.0)) + (s * 0.035)
-        return min(645.0, 300.0 + acceleration)
+        let acceleration = 345.0 * (1.0 - exp(-s / 300.0)) + (s * 0.05)
+        let cappedBase = min(650.0, 300.0 + acceleration)
+        
+        // Нескінченне плавне наростання швидкості після 2000 очок (кожна 1000 очок додає відчутний спортивний драйв):
+        let post2000 = max(0.0, s - 2000.0)
+        let endlessBoost = (180.0 * (1.0 - exp(-post2000 / 2500.0))) + (post2000 * 0.016)
+        return cappedBase + endlessBoost
     }
     
-    /// Динамічна тривалість стрибка: плавно адаптується до темпу гри.
-    /// На старті стрибок комфортний (0.28с), на максимальній швидкості — швидкий і чуйний (0.19с),
-    /// що усуває відчуття заторможеності на складних ділянках та вузьких платформах.
+    /// Динамічна тривалість стрибка: безперервно адаптується до зростаючого темпу гри.
+    /// На старті комфортний (0.28с), на 1000 очок (650 pt/s) — 0.19с, а при подальшому розгоні на 3000-5000+ очок
+    /// плавно скорочується до 0.145с, зберігаючи миттєвий відгук і чіткість приземлення на екстремальних швидкостях.
     private var currentJumpDuration: TimeInterval {
         guard gameState == .playing else { return Config.baseJumpDuration }
-        let speedProgress = (currentUpwardSpeed - 300.0) / (645.0 - 300.0)
-        let clamped = max(0.0, min(1.0, speedProgress))
-        return Config.baseJumpDuration - (Double(clamped) * (Config.baseJumpDuration - Config.minJumpDuration))
+        let speedProgress = (currentUpwardSpeed - 300.0) / 350.0 // 1.0 на 650 pt/s
+        let duration = Config.baseJumpDuration - (Double(speedProgress) * 0.09) // 0.19с на 650 pt/s
+        return max(0.145, duration)
     }
     
     /// Розміри розриву прірв: плавний і природний розподіл без сходинкових стрибків.
-    /// Від легких 2 тайлів на старті до динамічних 4-5 тайлів на високих очках.
+    /// Після 1000 очок переходить на високий рівень паркуру (4-6 тайлів),
+    /// після 2500 очок розширюється до 5-6 тайлів з першими гігантськими 7-тайловими прірвами,
+    /// а після 4000-5000+ очок складні 6-7 тайлові розриви стають основою траси.
     private func randomAbyssGapTileCount() -> Int {
         let s = CGFloat(max(0, score))
-        let progress = min(1.0, s / 800.0)
         let roll = Double.random(in: 0...1)
-        if progress < 0.25 {
-            // 0...200 очок: переважно 2 тайли (96 pt), іноді 3 тайли
+        if s < 180.0 {
+            // 0...180 очок: переважно 2 тайли (96 pt), іноді 3 тайли
             return (roll < 0.80) ? 2 : 3
-        } else if progress < 0.60 {
-            // 200...480 очок: плавний перехід між 2, 3 та 4 тайлами
+        } else if s < 450.0 {
+            // 180...450 очок: плавний перехід між 2, 3 та 4 тайлами
             return (roll < 0.40) ? 2 : ((roll < 0.85) ? 3 : 4)
-        } else if progress < 0.90 {
-            // 480...720 очок: 3, 4 або 5 тайлів
-            return (roll < 0.30) ? 3 : ((roll < 0.80) ? 4 : 5)
-        } else {
-            // 720+ очок: максимальний паркур (4-5 тайлів, рідко 6)
+        } else if s < 750.0 {
+            // 450...750 очок: 3, 4 або 5 тайлів
+            return (roll < 0.25) ? 3 : ((roll < 0.75) ? 4 : 5)
+        } else if s < 1000.0 {
+            // 750...1000 очок: 4-5 тайлів, рідко 6
             return (roll < 0.35) ? 4 : ((roll < 0.85) ? 5 : 6)
+        } else if s < 2500.0 {
+            // 1000...2500 очок: переважно 5 та 6 тайлів
+            return (roll < 0.15) ? 4 : ((roll < 0.65) ? 5 : 6)
+        } else if s < 4000.0 {
+            // 2500...4000 очок: 5 та 6 тайлів, з'являються екстремальні 7-тайлові розриви (10%)
+            return (roll < 0.45) ? 5 : ((roll < 0.90) ? 6 : 7)
+        } else {
+            // 4000+ очок (нескінченне наростання): максимальний паркур — 6 та 7 тайлів займають понад 70%
+            let highRoll = min(0.35, 0.15 + Double(s - 4000.0) / 10000.0)
+            return (roll < 0.30) ? 5 : ((roll < 1.0 - highRoll) ? 6 : 7)
         }
     }
     
-    /// Скорочення дистанції між прірвами (довжини твердих платформ):
-    /// Плавна неперервна експоненційна функція від ~560 pt на початку до ~115 pt на високих дистанціях.
-    /// Без різких «перепадів» довжини — платформи звужуються органічно, як у найкращих раннерах.
+    /// Нескінченне скорочення дистанції між прірвами (довжини твердих платформ):
+    /// Платформи поступово стискаються: ~115 pt (1000-2000), ~103 pt (3000), ~94 pt (4000), ~86 pt (5000), ~80 pt (6000+),
+    /// створюючи дедалі щільніший ритм стрибків без втрати фізичної прохідності.
     private func randomAbyssDistance() -> CGFloat {
         let s = CGFloat(max(0, score))
-        let meanDistance = 115.0 + 445.0 * exp(-s / 420.0)
-        let spread = meanDistance * 0.14
+        let baseMean = 115.0 + 445.0 * exp(-s / 260.0)
+        let post2000 = max(0.0, s - 2000.0)
+        // Плавне нескінченне стиснення до мінімально можливої безпечної довжини опори (~76 pt)
+        let endlessReduction = (22.0 * (1.0 - exp(-post2000 / 2200.0))) + (post2000 * 0.004)
+        let meanDistance = max(76.0, baseMean - endlessReduction)
+        let spread = meanDistance * 0.13
         return CGFloat.random(in: (meanDistance - spread)...(meanDistance + spread))
     }
     
@@ -525,8 +548,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     /// - При 1 житті (критичний стан): ~3,400...5,000 pt (~135...200 очок), дає гравцю чесний шанс вижити при майстерній грі.
     /// - При 2 життях: ~4,600...6,600 pt (~185...265 очок).
     /// - При 3 життях (повне здоров'я): ~7,200...10,000 pt (~290...400 очок), щоб не перевантажувати екран зайвими серцями.
-    /// - При високому рахунку (score >= 500-800+): дистанція плавно адаптується (до -20%),
-    ///   компенсуючи пікову щільність ворогів та високу швидкість без зламу складності.
+    /// - При високому рахунку (score >= 1000): дистанція адаптується під темп 1500-2000 очок.
+    /// - Після 2000 очок: плавне нескінченне розрідження сердець на 3000, 4000, 5000+ очок.
     private func randomHeartDistance() -> CGFloat {
         let s = CGFloat(max(0, score))
         
@@ -544,10 +567,16 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             maxBase = 10000.0
         }
         
-        // М'який коригуючий множник для високих очок (після 500 до 1200+ очок):
-        // Запобігає надмірному стрибку складності на 800+ очках
-        let highProgress = max(0.0, min(1.0, (s - 500.0) / 700.0))
-        let difficultyFactor = 1.0 - (highProgress * 0.20)
+        // Коригуючий множник для високих очок (досягає піку вже на 1000 очках):
+        let highProgress = max(0.0, min(1.0, (s - 450.0) / 550.0))
+        var difficultyFactor = 1.0 - (highProgress * 0.25)
+        
+        // Нескінченне поступове розрідження сердець після 2000 очок (3000, 4000, 5000+):
+        if s > 2000.0 {
+            let post2000 = (s - 2000.0) / 1000.0
+            let endlessHeartRarity = min(0.55, 0.12 + (post2000 * 0.08))
+            difficultyFactor += endlessHeartRarity
+        }
         
         return CGFloat.random(in: minBase...maxBase) * difficultyFactor
     }
@@ -2094,8 +2123,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         activeFireArrows.forEach { $0.removeFromParent() }
         activeFireArrows.removeAll()
         consecutivePatrollers = 0
-        firstMobScoreThreshold = Int.random(in: 60...90)
-        firstShooterScoreThreshold = Int.random(in: 210...260)
+        firstMobScoreThreshold = Int.random(in: 25...40)
+        firstShooterScoreThreshold = Int.random(in: 60...80)
         nextMobY = startCameraY + (CGFloat(firstMobScoreThreshold) * Config.distancePerScorePoint)
         
         // Золотисті монети: перша група монет з'являється вже на початку підйому (~250 pt)
@@ -2162,7 +2191,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     /// Перевіряє, чи є заданий вертикальний діапазон стіни повністю суцільним (без прірв по всій висоті)
-    private func isWallRangeSolid(onLeftWall: Bool, minY: CGFloat, maxY: CGFloat, safetyMargin: CGFloat = 60.0) -> Bool {
+    private func isWallRangeSolid(onLeftWall: Bool, minY: CGFloat, maxY: CGFloat, safetyMargin: CGFloat = 60.0, checkPlanned: Bool = true) -> Bool {
         let bottom = min(minY, maxY)
         let top = max(minY, maxY)
         let abyssNodes = onLeftWall ? leftAbyssNodes : rightAbyssNodes
@@ -2177,10 +2206,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             }
         }
         
-        // Також перевіряємо заплановану наступну прірву, якщо вона на цій стіні
-        if nextAbyssIsOnLeft == onLeftWall {
+        // Також перевіряємо заплановану наступну прірву, якщо увімкнено та вона на цій стіні
+        if checkPlanned && nextAbyssIsOnLeft == onLeftWall {
             let plannedMinY = nextAbyssY - safetyMargin
-            let plannedMaxY = nextAbyssY + (Config.tileSize * 4.0) + safetyMargin
+            let plannedMaxY = nextAbyssY + (Config.tileSize * 6.0) + safetyMargin
             if max(bottom, plannedMinY) <= min(top, plannedMaxY) {
                 return false
             }
@@ -2404,8 +2433,76 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         
         nextAbyssIsOnLeft = pickLeft
-        // Нова прірва гарантовано починається безпечно вище найвищої збудованої точки обох стін
-        nextAbyssY = max(currentLeftY, currentRightY) + randomAbyssDistance()
+        var plannedY = max(currentLeftY, currentRightY) + randomAbyssDistance()
+        
+        // Баланс та візуальна безпека: забороняємо планувати прірву в зоні патрулювання будь-яких мобів
+        // (щоб вони ніколи не ходили по краю чи в повітрі) та навпроти мобів-стрільців (для безпечного ухилення).
+        for mob in trackMobNodes {
+            if mob.isOnLeftWall == pickLeft {
+                // На тій самій стіні, де планується прірва:
+                // суворо заборонено прірву в зоні патрулювання моба та з надійним відступом 70 pt
+                let forbiddenMin = mob.pointAY - 70.0
+                let forbiddenMax = mob.pointBY + 70.0
+                if plannedY >= forbiddenMin && plannedY <= forbiddenMax {
+                    plannedY = forbiddenMax + 20.0
+                }
+            } else if mob.mobType == .shooter {
+                // На протилежній стіні від стрільця: не повинно бути прірви навпроти зони ухилення
+                let forbiddenMin = mob.pointAY - 200.0
+                let forbiddenMax = mob.pointBY + 260.0
+                if plannedY >= forbiddenMin && plannedY <= forbiddenMax {
+                    plannedY = forbiddenMax + 10.0
+                }
+            }
+        }
+        
+        nextAbyssY = plannedY
+    }
+    
+    /// Перевіряє, чи дозволено будувати прірву на вказаній висоті,
+    /// щоб не створити прірву під ногами будь-якого моба (виключає ходіння по повітрю чи краю обриву)
+    /// та не створити прірву навпроти активного моба-стрільця
+    private func canBuildAbyss(onLeftWall: Bool, atY: CGFloat) -> Bool {
+        let maxAbyssTop = atY + (Config.tileSize * 10.0) // розрив до 7 тайлів + 2 тайли уступів + запас
+        let edgeBuffer: CGFloat = 65.0 // надійний відступ від краю розриву до моба
+        
+        for mob in trackMobNodes {
+            if mob.isOnLeftWall == onLeftWall {
+                // Власна стіна моба: прірва та її уступи не повинні перетинатися з патрулем моба
+                let mobMin = mob.pointAY - edgeBuffer
+                let mobMax = mob.pointBY + edgeBuffer
+                if max(atY - edgeBuffer, mobMin) <= min(maxAbyssTop, mobMax) {
+                    return false
+                }
+            } else if mob.mobType == .shooter {
+                // Протилежна стіна від моба-стрільця: суворо заборонено прірву в усій зоні ухилення та приземлення
+                let forbiddenMin = mob.pointAY - 200.0
+                let forbiddenMax = mob.pointBY + 260.0
+                if max(atY, forbiddenMin) <= min(maxAbyssTop, forbiddenMax) {
+                    return false
+                }
+            }
+        }
+        return true
+    }
+    
+    /// Відкладає наступну прірву вище зони активних мобів (щоб прірва не спавнилася на їхній дорозі)
+    private func deferNextAbyssPastMobs(onLeftWall: Bool) {
+        var minSafeY = nextAbyssY
+        for mob in trackMobNodes {
+            if mob.isOnLeftWall == onLeftWall {
+                let safeY = mob.pointBY + 85.0
+                if safeY > minSafeY {
+                    minSafeY = safeY
+                }
+            } else if mob.mobType == .shooter {
+                let safeY = mob.pointBY + 270.0
+                if safeY > minSafeY {
+                    minSafeY = safeY
+                }
+            }
+        }
+        nextAbyssY = max(nextAbyssY, minSafeY)
     }
     
     /// Покроково будує обидві стіни у сітці без швів, інтегруючи прірви, серця та декорації
@@ -2418,12 +2515,22 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             // 1. Генерація ЛІВОЇ стіни
             if currentLeftY < targetY {
                 if nextAbyssIsOnLeft && currentLeftY >= nextAbyssY {
-                    // Спавнимо прірву різного розміру (залежно від рівня складності / очок)
-                    let gapTiles = randomAbyssGapTileCount()
-                    buildAbyssGap(onLeftWall: true, gapTileCount: gapTiles)
-                    
-                    // Плануємо наступну прірву процедурно (випадкова стіна з чергуванням/повторенням)
-                    scheduleNextAbyss(justSpawnedOnLeft: true)
+                    if canBuildAbyss(onLeftWall: true, atY: currentLeftY) {
+                        // Спавнимо прірву різного розміру (залежно від рівня складності / очок)
+                        let gapTiles = randomAbyssGapTileCount()
+                        buildAbyssGap(onLeftWall: true, gapTileCount: gapTiles)
+                        
+                        // Плануємо наступну прірву процедурно (випадкова стіна з чергуванням/повторенням)
+                        scheduleNextAbyss(justSpawnedOnLeft: true)
+                    } else {
+                        // Якщо поруч моб або навпроти стрілець, будуємо суцільний тайл і відкладаємо прірву вище
+                        let tile = createWallTile(texture: wallTexture, yPos: currentLeftY, isLeft: true)
+                        addChild(tile)
+                        leftTrackNodes.append(tile)
+                        maybeSpawnWallDecoration(onLeftWall: true, yPos: currentLeftY)
+                        currentLeftY += tileSize
+                        deferNextAbyssPastMobs(onLeftWall: true)
+                    }
                 } else {
                     // Звичайний суцільний тайл доріжки (Ground 02)
                     let tile = createWallTile(texture: wallTexture, yPos: currentLeftY, isLeft: true)
@@ -2437,12 +2544,22 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             // 2. Генерація ПРАВОЇ стіни
             if currentRightY < targetY {
                 if !nextAbyssIsOnLeft && currentRightY >= nextAbyssY {
-                    // Спавнимо прірву різного розміру на ПРАВІЙ стіні
-                    let gapTiles = randomAbyssGapTileCount()
-                    buildAbyssGap(onLeftWall: false, gapTileCount: gapTiles)
-                    
-                    // Плануємо наступну прірву процедурно (випадкова стіна з чергуванням/повторенням)
-                    scheduleNextAbyss(justSpawnedOnLeft: false)
+                    if canBuildAbyss(onLeftWall: false, atY: currentRightY) {
+                        // Спавнимо прірву різного розміру на ПРАВІЙ стіні
+                        let gapTiles = randomAbyssGapTileCount()
+                        buildAbyssGap(onLeftWall: false, gapTileCount: gapTiles)
+                        
+                        // Плануємо наступну прірву процедурно (випадкова стіна з чергуванням/повторенням)
+                        scheduleNextAbyss(justSpawnedOnLeft: false)
+                    } else {
+                        // Якщо поруч моб або навпроти стрілець, будуємо суцільний тайл і відкладаємо прірву вище
+                        let tile = createWallTile(texture: wallTexture, yPos: currentRightY, isLeft: false)
+                        addChild(tile)
+                        rightTrackNodes.append(tile)
+                        maybeSpawnWallDecoration(onLeftWall: false, yPos: currentRightY)
+                        currentRightY += tileSize
+                        deferNextAbyssPastMobs(onLeftWall: false)
+                    }
                 } else {
                     // Звичайний суцільний тайл доріжки (Ground 02)
                     let tile = createWallTile(texture: wallTexture, yPos: currentRightY, isLeft: false)
@@ -2581,54 +2698,109 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         trackHeartNodes.append(heart)
     }
     
-    /// Інтервал між спавнами ворожих мобів у стилі Subway Surfers:
-    /// Безперервна експоненційна функція, що плавно та органічно скорочує дистанцію між ворогами.
-    /// Повністю відсутні дискретні стрибки густоти мобів.
+    /// Інтервал між спавнами ворожих мобів:
+    /// Неперервне наростання щільності ворогів після 2000 очок (3000, 4000, 5000+):
+    /// Дистанція поступово скорочується: ~160 pt (2000), ~145 pt (3000), ~133 pt (4000), ~124 pt (5000) тощо.
     private func randomMobDistance() -> CGFloat {
         let s = CGFloat(max(0, score))
-        let meanDistance = 160.0 + 640.0 * exp(-s / 380.0)
-        let spread = meanDistance * 0.15
+        let baseMean = 160.0 + 640.0 * exp(-s / 240.0)
+        let post2000 = max(0.0, s - 2000.0)
+        let endlessReduction = (30.0 * (1.0 - exp(-post2000 / 2500.0))) + (post2000 * 0.005)
+        let meanDistance = max(112.0, baseMean - endlessReduction)
+        let spread = meanDistance * 0.14
         return CGFloat.random(in: (meanDistance - spread)...(meanDistance + spread))
     }
     
     /// Перевірка умов безпеки та чесності спавну моба:
-    /// 1. Стіна, де рухається моб, суцільна на ділянці патруля (з невеликим запасом).
-    /// 2. Протилежна стіна має безпечну ділянку для ухилення стрибком.
+    /// 1. Стіна, де рухається моб, суцільна на ділянці патруля з надійним буфером від країв прірв (щоб моб не ходив по повітрю).
+    /// 2. Для мобів-стрільців: на протилежній стіні ГАРАНТОВАНО відсутня збудована прірва в зоні зустрічі.
+    ///    При спавні стрільця наступна запланована прірва на протилежній стіні автоматично
+    ///    відсувається далеко вперед, гарантуючи вільну стіну для безпечного ухилення.
     /// 3. Відсутність накладання на інших активних мобів.
-    private func canSpawnMob(onLeftWall: Bool, startY: CGFloat, endY: CGFloat) -> Bool {
-        // 1. Власна стіна моба суцільна на ділянці патруля
-        guard isWallRangeSolid(onLeftWall: onLeftWall, minY: startY, maxY: endY, safetyMargin: 15.0) else {
-            return false
-        }
+    private func canSpawnMob(onLeftWall: Bool, startY: CGFloat, endY: CGFloat, mobType: MobNode.MobType = .patroller) -> Bool {
+        let wallEdgeBuffer: CGFloat = 60.0 // Надійний відступ від обривів, щоб моб завжди твердо стояв на скелі
         
-        // 2. Протилежна стіна має тверду поверхню навпроти зони контакту
-        guard isWallRangeSolid(onLeftWall: !onLeftWall, minY: startY - 10.0, maxY: endY + 20.0, safetyMargin: 10.0) else {
-            return false
-        }
-        
-        // 3. Дистанція до інших мобів (щоб уникнути непрохідних скупчень)
-        for mob in trackMobNodes {
-            let sameWall = (mob.isOnLeftWall == onLeftWall)
-            let buffer: CGFloat = sameWall ? 90.0 : 50.0
-            let mobMin = mob.pointAY - buffer
-            let mobMax = mob.pointBY + buffer
-            if startY <= mobMax && endY >= mobMin {
+        if mobType == .shooter {
+            // 1. Власна стіна моба-стрільця суцільна на ділянці патруля з надійним відступом від прірв
+            guard isWallRangeSolid(onLeftWall: onLeftWall, minY: startY - 20.0, maxY: endY + 20.0, safetyMargin: wallEdgeBuffer, checkPlanned: false) else {
                 return false
             }
+            
+            // 2. На протилежній стіні навпроти стрільця та в зоні наближення не повинно бути вже збудованої прірви
+            guard isWallRangeSolid(onLeftWall: !onLeftWall, minY: startY - 100.0, maxY: endY + 40.0, safetyMargin: 35.0, checkPlanned: false) else {
+                return false
+            }
+            
+            // 3. Дистанція до інших мобів:
+            for mob in trackMobNodes {
+                if mob.isOnLeftWall == onLeftWall {
+                    let sameWallBuffer: CGFloat = 100.0
+                    if startY <= (mob.pointBY + sameWallBuffer) && endY >= (mob.pointAY - sameWallBuffer) {
+                        return false
+                    }
+                } else {
+                    // На протилежній стіні не повинно бути мобів навпроти або надто близько спереду
+                    let oppMin = mob.pointAY - 240.0
+                    let oppMax = mob.pointBY + 140.0
+                    if startY <= oppMax && endY >= oppMin {
+                        return false
+                    }
+                }
+            }
+            return true
+        } else {
+            // 1. Власна стіна звичайного патрульного повністю суцільна з гарантованим відступом від краю прірви
+            guard isWallRangeSolid(onLeftWall: onLeftWall, minY: startY, maxY: endY, safetyMargin: wallEdgeBuffer, checkPlanned: false) else {
+                return false
+            }
+            
+            // 2. Протилежна стіна має тверду поверхню навпроти зони контакту
+            guard isWallRangeSolid(onLeftWall: !onLeftWall, minY: startY - 20.0, maxY: endY + 30.0, safetyMargin: 30.0, checkPlanned: false) else {
+                return false
+            }
+            
+            // 3. Дистанція до інших мобів
+            for mob in trackMobNodes {
+                if mob.isOnLeftWall == onLeftWall {
+                    let sameWallBuffer: CGFloat = 90.0
+                    if startY <= (mob.pointBY + sameWallBuffer) && endY >= (mob.pointAY - sameWallBuffer) {
+                        return false
+                    }
+                } else {
+                    if mob.mobType == .shooter {
+                        let oppMin = mob.pointAY - 240.0
+                        let oppMax = mob.pointBY + 140.0
+                        if startY <= oppMax && endY >= oppMin {
+                            return false
+                        }
+                    } else {
+                        let buffer: CGFloat = 50.0
+                        let mobMin = mob.pointAY - buffer
+                        let mobMax = mob.pointBY + buffer
+                        if startY <= mobMax && endY >= mobMin {
+                            return false
+                        }
+                    }
+                }
+            }
+            return true
         }
-        
-        return true
     }
     
     /// Спроба процедурного спавну моба на основі поточної висоти каньйону
     private func trySpawnMob(candidateY: CGFloat) {
         // Плавна адаптація патрулювання без дискретних сходинок у стилі Subway Surfers:
-        // довжина і швидкість мобів змінюються плавно в міру зростання дистанції
-        let patrolProgress = min(1.0, CGFloat(max(0, score)) / 750.0)
+        // довжина і швидкість мобів змінюються плавно, досягаючи спортивного максимуму вже до 1000 очок,
+        // а після 2000 очок патрульні отримують додатковий елітний бонус швидкості
+        let patrolProgress = min(1.0, CGFloat(max(0, score)) / 500.0)
         let maxPatrol: CGFloat = 120.0 - (patrolProgress * 55.0) // 120 -> 65 pt
         let minPatrol: CGFloat = 50.0 - (patrolProgress * 15.0)  // 50 -> 35 pt
         let patrolDistance = CGFloat.random(in: minPatrol...maxPatrol)
-        let patrolSpeed = CGFloat.random(in: 60.0...85.0) + (patrolProgress * 65.0)
+        let basePatrolSpeed = CGFloat.random(in: 60.0...85.0) + (patrolProgress * 65.0)
+        // Нескінченне наростання швидкості патрульних після 2000 очок (кожна 1000 очок робить мобів швидшими):
+        let post2000Score = max(0.0, CGFloat(score - 2000))
+        let endlessSpeedBonus = (60.0 * (1.0 - exp(-post2000Score / 3000.0))) + (post2000Score * 0.015)
+        let patrolSpeed = basePatrolSpeed + endlessSpeedBonus
         let endY = candidateY + patrolDistance
         
         // Випадковий вибір стіни для патрулювання
@@ -2638,52 +2810,96 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // Збалансована поява мобів-стрільців:
         // 1. Прості моби з'являються першими (на розминці).
-        // 2. Моби-стрільці з'являються помітно пізніше (score >= firstShooterScoreThreshold ~210-260).
-        // 3. Шанс стрільця плавно зростає від 18% до 45% без різких стрибків.
-        // 4. Не спавнимо стрільців поспіль (завжди чергуємо з простими мобами до високих очок).
+        // 2. Моби-стрільці з'являються після початкової розминки (score >= firstShooterScoreThreshold ~60-80).
+        // 3. Шанс стрільця плавно зростає від 25% до 50%, після 1000 очок сягає 55-60%,
+        //    а після 2000 очок неперервно зростає: 70% на 3000, 76% на 4000, до 82% на 5000+.
         let shooterChance: Double
         if score < firstShooterScoreThreshold {
             shooterChance = 0.0
-        } else if consecutivePatrollers < 1 && score < 600 {
+        } else if consecutivePatrollers < 1 && score < 250 {
             shooterChance = 0.0
+        } else if score >= 2000 {
+            let post2000 = Double(score - 2000)
+            let endlessRatio = (0.16 * (1.0 - exp(-post2000 / 2500.0))) + (post2000 * 0.000015)
+            shooterChance = min(0.82, 0.60 + endlessRatio)
+        } else if score >= 1000 {
+            let highProgress = min(1.0, Double(score - 1000) / 400.0)
+            shooterChance = 0.50 + (highProgress * 0.10)
         } else {
-            let progress = min(1.0, Double(score - firstShooterScoreThreshold) / 500.0)
-            shooterChance = 0.18 + (progress * 0.27)
+            let progress = min(1.0, Double(score - firstShooterScoreThreshold) / 300.0)
+            shooterChance = 0.25 + (progress * 0.25)
         }
         
         let wantsShooter = (Double.random(in: 0...1) < shooterChance)
-        let finalMobType: MobNode.MobType = wantsShooter ? .shooter : .patroller
+        var actualMobType: MobNode.MobType = wantsShooter ? .shooter : .patroller
         
-        // Перевіряємо стіни: спочатку повна дистанція патруля
-        if canSpawnMob(onLeftWall: preferredLeft, startY: candidateY, endY: endY) {
-            targetSide = preferredLeft
-            finalEndY = endY
-        } else if canSpawnMob(onLeftWall: !preferredLeft, startY: candidateY, endY: endY) {
-            targetSide = !preferredLeft
-            finalEndY = endY
-        } else {
-            // Якщо повна дистанція не вмістилася між прірвами, перевіряємо компактний патруль
-            let compactEndY = candidateY + 40.0
-            if canSpawnMob(onLeftWall: preferredLeft, startY: candidateY, endY: compactEndY) {
+        if wantsShooter {
+            // Спочатку намагаємося розмістити моба-стрільця з дотриманням усіх гарантій безпечного ухилення
+            if canSpawnMob(onLeftWall: preferredLeft, startY: candidateY, endY: endY, mobType: .shooter) {
                 targetSide = preferredLeft
-                finalEndY = compactEndY
-            } else if canSpawnMob(onLeftWall: !preferredLeft, startY: candidateY, endY: compactEndY) {
+                finalEndY = endY
+                actualMobType = .shooter
+            } else if canSpawnMob(onLeftWall: !preferredLeft, startY: candidateY, endY: endY, mobType: .shooter) {
                 targetSide = !preferredLeft
-                finalEndY = compactEndY
+                finalEndY = endY
+                actualMobType = .shooter
             } else {
-                targetSide = nil
+                let compactEndY = candidateY + 40.0
+                if canSpawnMob(onLeftWall: preferredLeft, startY: candidateY, endY: compactEndY, mobType: .shooter) {
+                    targetSide = preferredLeft
+                    finalEndY = compactEndY
+                    actualMobType = .shooter
+                } else if canSpawnMob(onLeftWall: !preferredLeft, startY: candidateY, endY: compactEndY, mobType: .shooter) {
+                    targetSide = !preferredLeft
+                    finalEndY = compactEndY
+                    actualMobType = .shooter
+                }
+            }
+        }
+        
+        // Якщо стрілець не планувався або не вміщується через прірви/мобів на протилежній стіні,
+        // перевіряємо розміщення звичайного патрульного, щоб не переривати динаміку гри
+        if targetSide == nil {
+            actualMobType = .patroller
+            if canSpawnMob(onLeftWall: preferredLeft, startY: candidateY, endY: endY, mobType: .patroller) {
+                targetSide = preferredLeft
+                finalEndY = endY
+            } else if canSpawnMob(onLeftWall: !preferredLeft, startY: candidateY, endY: endY, mobType: .patroller) {
+                targetSide = !preferredLeft
+                finalEndY = endY
+            } else {
+                let compactEndY = candidateY + 40.0
+                if canSpawnMob(onLeftWall: preferredLeft, startY: candidateY, endY: compactEndY, mobType: .patroller) {
+                    targetSide = preferredLeft
+                    finalEndY = compactEndY
+                } else if canSpawnMob(onLeftWall: !preferredLeft, startY: candidateY, endY: compactEndY, mobType: .patroller) {
+                    targetSide = !preferredLeft
+                    finalEndY = compactEndY
+                } else {
+                    targetSide = nil
+                }
             }
         }
         
         if let onLeft = targetSide {
-            if finalMobType == .shooter {
+            if actualMobType == .shooter {
                 consecutivePatrollers = 0
+                // Баланс: гарантуємо, що прірва на протилежній стіні відсунута далеко вперед
+                if nextAbyssIsOnLeft == !onLeft {
+                    nextAbyssY = max(nextAbyssY, finalEndY + 250.0)
+                } else {
+                    nextAbyssY = max(nextAbyssY, finalEndY + 130.0)
+                }
             } else {
                 consecutivePatrollers += 1
+                // Гарантуємо, що наступна запланована прірва на стіні патрульного не з'явиться під його ногами
+                if nextAbyssIsOnLeft == onLeft {
+                    nextAbyssY = max(nextAbyssY, finalEndY + 85.0)
+                }
             }
             
             let wallX = onLeft ? (leftWallInnerX + MobNode.Constants.footOffset) : (rightWallInnerX - MobNode.Constants.footOffset)
-            let mobType = finalMobType
+            let mobType = actualMobType
             let activeTextures = (mobType == .shooter) ? cachedShooterTextures : cachedPatrollerTextures
             
             let mob = MobNode(
@@ -3161,9 +3377,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             }
             
             // Оновлення та активація стрільби ворожих мобів-стрільців при наближенні гравця.
-            // Перевіряємо, чи має гравець безпечну стіну для стрибка-ухилення (без прірви навпроти).
-            let oppositeWallHasAbyss = hasAbyssOnWall(isLeft: !player.isOnLeftWall, nearY: player.position.y, range: 75.0)
-            let isDodgeSafe = !oppositeWallHasAbyss
+            // Перевіряємо, чи має гравець безпечну стіну для стрибка-ухилення (без прірви та інших мобів навпроти).
+            let jumpTravelY = currentUpwardSpeed * CGFloat(currentJumpDuration)
+            let landingMinY = player.position.y - 20.0
+            let landingMaxY = player.position.y + jumpTravelY + 180.0
+            let oppositeWallHasAbyss = hasAbyssOnWall(isLeft: !player.isOnLeftWall, minY: landingMinY, maxY: landingMaxY)
+            let oppositeWallHasMob = hasMobOnWall(isLeft: !player.isOnLeftWall, minY: landingMinY, maxY: landingMaxY)
+            let isDodgeSafe = !oppositeWallHasAbyss && !oppositeWallHasMob
             let canDoubleShot = score >= 500
             
             for mob in trackMobNodes {
@@ -3193,13 +3413,29 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     /// Перевіряє, чи є розрив стіни (прірва) у вказаному діапазоні висоти (швидка перевірка O(1))
-    private func hasAbyssOnWall(isLeft: Bool, nearY: CGFloat, range: CGFloat = 80.0) -> Bool {
+    private func hasAbyssOnWall(isLeft: Bool, minY: CGFloat, maxY: CGFloat, safetyMargin: CGFloat = 0.0) -> Bool {
+        let bottom = min(minY, maxY) - safetyMargin
+        let top = max(minY, maxY) + safetyMargin
         let abyssNodes = isLeft ? leftAbyssNodes : rightAbyssNodes
         for abyss in abyssNodes {
-            let halfH = abyss.gapHeight / 2.0
-            let minY = abyss.position.y - halfH - range
-            let maxY = abyss.position.y + halfH + range
-            if nearY >= minY && nearY <= maxY {
+            let halfH = (abyss.gapHeight / 2.0) + Config.tileSize
+            let abyssMinY = abyss.position.y - halfH
+            let abyssMaxY = abyss.position.y + halfH
+            if max(bottom, abyssMinY) <= min(top, abyssMaxY) {
+                return true
+            }
+        }
+        return false
+    }
+    
+    /// Перевіряє, чи є інший моб на стіні у вказаному вертикальному діапазоні
+    private func hasMobOnWall(isLeft: Bool, minY: CGFloat, maxY: CGFloat, safetyMargin: CGFloat = 0.0) -> Bool {
+        let bottom = min(minY, maxY) - safetyMargin
+        let top = max(minY, maxY) + safetyMargin
+        for mob in trackMobNodes where mob.isOnLeftWall == isLeft {
+            let mobMin = mob.pointAY
+            let mobMax = mob.pointBY
+            if max(bottom, mobMin) <= min(top, mobMax) {
                 return true
             }
         }
@@ -3783,7 +4019,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         playCoinSound()
     }
     
-    /// Відродження персонажа з 1 серцем та повернення до гри
+    /// Відродження персонажа з 1 серцем та процедурна перегенерація карти для чесного продовження забігу:
+    /// Складність (швидкість руху, розміри прірв 5-6 тайлів, частота мобів, стрільці) залишається НЕЗМІННОЮ
+    /// згідно з набраними очками гравця (якщо гравець програв на Hard / Elite — він продовжує на Hard / Elite).
+    /// Проте безпосередня зона появи та коридор перед гравцем очищаються від миттєвих смертельних пасток:
+    /// - Обидві стіни на ділянці старту гарантовано мають суцільні монолітні скелі без розривів.
+    /// - Будь-які прірви під ногами або безпосередньо перед гравцем перетворюються на суцільну породу.
+    /// - Усі ворожі моби та активні стріли поруч очищаються, даючи гравцю злітну смугу для реакції.
+    /// - Наступні перешкоди (прірви та моби) процедурно спавняться відразу після безпечної смуги
+    ///   за повноцінною складною формулою поточного рахунку.
     private func revivePlayerWithOneHeart() {
         // 1. Прибираємо оверлей GameOver
         gameOverOverlayNode?.removeFromParent()
@@ -3795,47 +4039,132 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         isPlayerFalling = false
         gameState = .playing
         lastUpdateTime = 0
+        lastAbyssHitTime = 0
+        hasBufferedJump = false
         
         // 3. Встановлюємо 1 життя та оновлюємо HUD
         currentLives = 1
         updateHUD(animated: true)
         
-        // 4. Очищаємо ворожі стріли
+        // 4. Очищаємо всі активні снаряди
         activeFireArrows.forEach { $0.removeFromParent() }
         activeFireArrows.removeAll()
         
-        // 5. Очищаємо небезпечних мобів поруч із точкою відродження гравця
+        // 5. Розраховуємо висоту відродження героя
         let pY = cameraNode.position.y + playerCameraOffsetY
-        for mob in trackMobNodes {
-            if abs(mob.position.y - pY) < 240.0 {
-                mob.removeFromParent()
+        
+        // Знаходимо будь-які прірви, що торкаються або перетинають зону відродження гравця
+        let overlappingAbysses = (leftAbyssNodes + rightAbyssNodes).filter { abyss in
+            let abyssTop = abyss.position.y + (abyss.gapHeight / 2.0) + Config.tileSize
+            return abyssTop >= (pY - 144.0)
+        }
+        let lowestAbyssBottom = overlappingAbysses.map {
+            $0.position.y - ($0.gapHeight / 2.0) - Config.tileSize
+        }.min() ?? (pY - 144.0)
+        
+        let targetCleanY = min(pY - 144.0, lowestAbyssBottom - Config.tileSize)
+        let tileIndex = Int(floor((targetCleanY - (Config.tileSize / 2.0)) / Config.tileSize))
+        let cleanStartY = CGFloat(tileIndex) * Config.tileSize + (Config.tileSize / 2.0)
+        
+        // 6. Очищаємо старі тайли стін, прірви, декорації та мобів від cleanStartY і вище
+        leftTrackNodes.removeAll { node in
+            if node.position.y >= cleanStartY - 5.0 {
+                node.removeFromParent()
+                return true
             }
+            return false
         }
-        trackMobNodes.removeAll { $0.parent == nil }
-        
-        // 6. Знаходимо безпечну суцільну ділянку стіни на поточній висоті камери
-        let isLeftSafe = isWallRangeSolid(onLeftWall: true, minY: pY - 35.0, maxY: pY + 55.0, safetyMargin: 25.0)
-        let isRightSafe = isWallRangeSolid(onLeftWall: false, minY: pY - 35.0, maxY: pY + 55.0, safetyMargin: 25.0)
-        
-        let onLeft: Bool
-        if isLeftSafe {
-            onLeft = true
-        } else if isRightSafe {
-            onLeft = false
-        } else {
-            onLeft = Bool.random()
+        rightTrackNodes.removeAll { node in
+            if node.position.y >= cleanStartY - 5.0 {
+                node.removeFromParent()
+                return true
+            }
+            return false
+        }
+        leftAbyssNodes.removeAll { node in
+            if (node.position.y + (node.gapHeight / 2.0)) >= cleanStartY - 5.0 {
+                node.removeFromParent()
+                return true
+            }
+            return false
+        }
+        rightAbyssNodes.removeAll { node in
+            if (node.position.y + (node.gapHeight / 2.0)) >= cleanStartY - 5.0 {
+                node.removeFromParent()
+                return true
+            }
+            return false
+        }
+        trackMobNodes.removeAll { mob in
+            if mob.pointBY >= cleanStartY - 100.0 {
+                mob.removeFromParent()
+                return true
+            }
+            return false
+        }
+        decorationNodes.removeAll { node in
+            if node.position.y >= cleanStartY - 5.0 {
+                node.removeFromParent()
+                return true
+            }
+            return false
+        }
+        trackHeartNodes.removeAll { node in
+            if node.position.y >= cleanStartY - 5.0 {
+                node.removeFromParent()
+                return true
+            }
+            return false
+        }
+        trackCoinNodes.removeAll { node in
+            if node.position.y >= cleanStartY - 5.0 {
+                node.removeFromParent()
+                return true
+            }
+            return false
         }
         
+        // 7. Створюємо гарантовану злітну смугу чистого бігу (обидві стіни 100% суцільні на ~540 pt вперед)
+        currentLeftY = cleanStartY
+        currentRightY = cleanStartY
+        lastLeftDecoY = cleanStartY
+        lastRightDecoY = cleanStartY
+        let safeRunwayEndY = pY + 540.0
+        
+        while currentLeftY < safeRunwayEndY {
+            let tile = createWallTile(texture: wallTexture, yPos: currentLeftY, isLeft: true)
+            addChild(tile)
+            leftTrackNodes.append(tile)
+            currentLeftY += Config.tileSize
+        }
+        while currentRightY < safeRunwayEndY {
+            let tile = createWallTile(texture: wallTexture, yPos: currentRightY, isLeft: false)
+            addChild(tile)
+            rightTrackNodes.append(tile)
+            currentRightY += Config.tileSize
+        }
+        
+        // 8. Відновлюємо процедурну генерацію за поточною формулою складності (Hard/Elite)
+        // Наступні прірви та моби з'являться відразу після безпечної смуги відповідно до поточного рахунку
+        nextAbyssIsOnLeft = Bool.random()
+        consecutiveAbyssesOnSameWall = 1
+        nextAbyssY = currentLeftY + randomAbyssDistance()
+        nextMobY = currentLeftY + randomMobDistance()
+        nextTreeBackgroundY = currentLeftY + 600.0
+        nextHeartY = currentLeftY + randomHeartDistance()
+        nextCoinPatternY = currentLeftY + 160.0
+        
+        // Добудовуємо каньйон наперед на 1.5 екрана вперед за поточними формулами складності
+        buildTrack(upTo: cameraNode.position.y + (size.height * 1.5))
+        
+        // 9. Відроджуємо персонажа на гарантовано монолітній скелі
+        let onLeft = player.isOnLeftWall
         let safeX = onLeft ? playerLeftX : playerRightX
         let safePos = CGPoint(x: safeX, y: pY)
-        
-        // 7. Відроджуємо персонажа на безпечній скелі з 3 секундами повної невразливості
         player.respawn(onLeftWall: onLeft, at: safePos)
         
-        // 8. Візуальний ефект відновлення серця
+        // 10. Візуальний ефект відновлення серця та фонова музика
         playHeartPickupEffect(at: safePos)
-        
-        // 9. Відновлюємо фонову музику гри
         startBGM(lowVolume: false)
     }
     

@@ -85,110 +85,110 @@ final class AchievementManager {
         Achievement(
             id: "trailblazer",
             title: "Trailblazer",
-            description: "Reach 300 score in a single run",
+            description: "Reach 800 score in a single run",
             difficulty: .easy,
-            coinReward: 500,
-            targetValue: 300
+            coinReward: 250,
+            targetValue: 800
         ),
         Achievement(
             id: "coin_enthusiast",
             title: "Coin Enthusiast",
-            description: "Collect 100 coins in a single run",
+            description: "Collect 250 coins in a single run",
             difficulty: .easy,
-            coinReward: 500,
-            targetValue: 100
+            coinReward: 250,
+            targetValue: 250
         ),
         Achievement(
             id: "wall_master",
             title: "Wall Master",
-            description: "Make 120 wall jumps in a single run",
+            description: "Make 300 wall jumps in a single run",
             difficulty: .easy,
-            coinReward: 600,
-            targetValue: 120
+            coinReward: 300,
+            targetValue: 300
         ),
         
-        // --- MEDIUM (Вимагають серйозного скілу або 20-50 забігів) ---
+        // --- MEDIUM (Вимагають серйозного скілу або 100 забігів) ---
         Achievement(
             id: "canyon_conqueror",
             title: "Canyon Conqueror",
-            description: "Reach 1,000 score in a single run",
+            description: "Reach 2,000 score in a single run",
             difficulty: .medium,
-            coinReward: 2000,
-            targetValue: 1000
+            coinReward: 650,
+            targetValue: 2000
         ),
         Achievement(
             id: "treasure_hoarder",
             title: "Treasure Hoarder",
-            description: "Collect 300 coins in a single run",
+            description: "Collect 600 coins in a single run",
             difficulty: .medium,
-            coinReward: 2500,
-            targetValue: 300
+            coinReward: 800,
+            targetValue: 600
         ),
         Achievement(
             id: "ghost_runner",
             title: "Ghost Runner",
-            description: "Reach 500 score without taking any damage",
+            description: "Reach 1,200 score without taking any damage",
             difficulty: .medium,
-            coinReward: 3000,
-            targetValue: 500
+            coinReward: 1000,
+            targetValue: 1200
         ),
         Achievement(
             id: "seasoned_climber",
             title: "Seasoned Climber",
-            description: "Complete 50 full runs (Lifetime: 50)",
+            description: "Complete 100 full runs (Lifetime: 100)",
             difficulty: .medium,
-            coinReward: 3500,
-            targetValue: 50
+            coinReward: 1150,
+            targetValue: 100
         ),
         Achievement(
             id: "arrow_matrix",
             title: "Arrow Matrix",
-            description: "Dodge 60 mob projectiles across your runs",
+            description: "Dodge 150 mob projectiles across your runs",
             difficulty: .medium,
-            coinReward: 3000,
-            targetValue: 60
+            coinReward: 1000,
+            targetValue: 150
         ),
         
-        // --- HARD (Елітні досягнення: 50-100 ігор, висока майстерність) ---
+        // --- HARD (Елітні досягнення: висока майстерність та витримка) ---
         Achievement(
             id: "apex_legend",
             title: "Apex Legend",
-            description: "Reach 2,500 score in a single run",
+            description: "Reach 5,000 score in a single run",
             difficulty: .hard,
-            coinReward: 8000,
-            targetValue: 2500
+            coinReward: 2000,
+            targetValue: 5000
         ),
         Achievement(
             id: "golden_king",
             title: "Golden King",
-            description: "Collect 600 coins in a single run",
+            description: "Collect 1,200 coins in a single run",
             difficulty: .hard,
-            coinReward: 7000,
-            targetValue: 600
+            coinReward: 1750,
+            targetValue: 1200
         ),
         Achievement(
             id: "untouchable_titan",
             title: "Untouchable Titan",
-            description: "Reach 1,200 score without falling or reviving",
+            description: "Reach 2,500 score without falling or reviving",
             difficulty: .hard,
-            coinReward: 8000,
-            targetValue: 1200
+            coinReward: 2000,
+            targetValue: 2500
         ),
         Achievement(
             id: "marathon_master",
             title: "Marathon Master",
-            description: "Accumulate 30,000 total score across all runs",
+            description: "Accumulate 100,000 total score across all runs",
             difficulty: .hard,
-            coinReward: 10000,
-            targetValue: 30000
+            coinReward: 2500,
+            targetValue: 100000
         ),
         Achievement(
             id: "centurion",
             title: "Centurion",
-            description: "Complete 100 runs in Wallshift",
+            description: "Complete 250 runs in Wallshift",
             difficulty: .hard,
-            coinReward: 10000,
-            targetValue: 100
+            coinReward: 2500,
+            targetValue: 250
         )
     ]
     
@@ -335,59 +335,59 @@ final class AchievementManager {
         fellIntoAbyssThisRun: Bool,
         usedReviveThisRun: Bool
     ) {
-        // 1. Дистанція в забігу (Score)
-        if score >= 300 {
+        // 1. Дистанція в забігу (Score: 800, 2000, 5000)
+        if score >= 800 {
             unlock(id: "trailblazer")
         }
-        if score >= 1000 {
+        if score >= 2000 {
             unlock(id: "canyon_conqueror")
         }
-        if score >= 2500 {
+        if score >= 5000 {
             unlock(id: "apex_legend")
         }
         
-        // 2. Стрибки в забігу (Wall Jumps: 120)
+        // 2. Стрибки в забігу (Wall Jumps: 300)
         let savedBestJumps = UserDefaults.standard.integer(forKey: bestRunJumpsKey)
         if runJumps > savedBestJumps {
             UserDefaults.standard.set(runJumps, forKey: bestRunJumpsKey)
         }
-        if runJumps >= 120 {
+        if runJumps >= 300 {
             unlock(id: "wall_master")
         }
         
-        // 3. Монети в забігу (Coins: 100, 300, 600)
+        // 3. Монети в забігу (Coins: 250, 600, 1200)
         let savedBestCoins = UserDefaults.standard.integer(forKey: bestRunCoinsKey)
         if runCoins > savedBestCoins {
             UserDefaults.standard.set(runCoins, forKey: bestRunCoinsKey)
         }
-        if runCoins >= 100 {
+        if runCoins >= 250 {
             unlock(id: "coin_enthusiast")
         }
-        if runCoins >= 300 {
+        if runCoins >= 600 {
             unlock(id: "treasure_hoarder")
         }
-        if runCoins >= 600 {
+        if runCoins >= 1200 {
             unlock(id: "golden_king")
         }
         
-        // 4. Ghost Runner (500 score without damage)
+        // 4. Ghost Runner (1,200 score without damage)
         if !tookDamageThisRun {
             let savedGhost = UserDefaults.standard.integer(forKey: bestUntouchableKey)
             if score > savedGhost {
                 UserDefaults.standard.set(score, forKey: bestUntouchableKey)
             }
-            if score >= 500 {
+            if score >= 1200 {
                 unlock(id: "ghost_runner")
             }
         }
         
-        // 5. Untouchable Titan (1,200 score without abyss fall and without revive)
+        // 5. Untouchable Titan (2,500 score without abyss fall and without revive)
         if !fellIntoAbyssThisRun && !usedReviveThisRun {
             let savedTitan = UserDefaults.standard.integer(forKey: bestIronWillKey)
             if score > savedTitan {
                 UserDefaults.standard.set(score, forKey: bestIronWillKey)
             }
-            if score >= 1200 {
+            if score >= 2500 {
                 unlock(id: "untouchable_titan")
             }
         }
@@ -397,31 +397,31 @@ final class AchievementManager {
     func completeRun(score: Int) {
         guard score >= 10 else { return }
         
-        // Кількість забігів (+1)
+        // Кількість забігів (+1, цілі: 100, 250)
         let totalRuns = UserDefaults.standard.integer(forKey: totalRunsKey) + 1
         UserDefaults.standard.set(totalRuns, forKey: totalRunsKey)
         
-        if totalRuns >= 50 {
+        if totalRuns >= 100 {
             unlock(id: "seasoned_climber")
         }
-        if totalRuns >= 100 {
+        if totalRuns >= 250 {
             unlock(id: "centurion")
         }
         
-        // Сумарна дистанція за всі часи (+score)
+        // Сумарна дистанція за всі часи (+score, ціль: 100,000)
         let lifetime = UserDefaults.standard.integer(forKey: lifetimeScoreKey) + score
         UserDefaults.standard.set(lifetime, forKey: lifetimeScoreKey)
         
-        if lifetime >= 30000 {
+        if lifetime >= 100000 {
             unlock(id: "marathon_master")
         }
     }
     
-    /// Трекінг ухилення від снаряда моба
+    /// Трекінг ухилення від снаряда моба (ціль: 150)
     func trackArrowDodged() {
         let current = UserDefaults.standard.integer(forKey: totalDodgedArrowsKey) + 1
         UserDefaults.standard.set(current, forKey: totalDodgedArrowsKey)
-        if current >= 60 {
+        if current >= 150 {
             unlock(id: "arrow_matrix")
         }
     }

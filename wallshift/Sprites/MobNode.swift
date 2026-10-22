@@ -221,31 +221,34 @@ final class MobNode: SKSpriteNode {
         
         guard mobType == .shooter, !isAttacking else { return }
         
-        // Якщо навпроти гравця прірва і йому нікуди стрибнути для ухилення — утримуємо вогонь
+        // Гравець повинен бігти по тій самій стіні, захищаючи яку моб здійснює постріл,
+        // щоб гравець мав змогу ухилитися стрибком на протилежну чисту стіну
+        guard playerIsOnLeftWall == self.isOnLeftWall else { return }
+        
+        // Якщо навпроти гравця прірва чи інший моб і йому нікуди стрибнути для ухилення — утримуємо вогонь
         guard isDodgeSafe else { return }
         
         // Динамічний радіус виявлення: на високій швидкості моб реагує раніше, не даючи гравцю пролетіти повз
         let speedFactor = max(0, gameSpeed - 290.0)
-        let dynamicDetectionRange = min(640.0, Constants.detectionRangeY + (speedFactor * 0.45))
+        let dynamicDetectionRange = min(760.0, Constants.detectionRangeY + (speedFactor * 0.50))
         
         // 1. Гравець повинен знаходитися в зоні досяжності каньйону (наближається знизу)
         let verticalDistance = position.y - playerPosition.y
         guard verticalDistance > 80.0 && verticalDistance <= dynamicDetectionRange else { return }
         
         // Якщо гравець на тій самій стіні, але вже занадто близько — не стріляємо, щоб дати шанс оббігти/перестрибнути
-        let isSameWall = (playerIsOnLeftWall == self.isOnLeftWall)
-        if isSameWall && verticalDistance < 140.0 {
+        if verticalDistance < 140.0 {
             return
         }
         
-        // Динамічний кулдаун: на високій швидкості гри скорочується з 2.4 с до 1.5 с
-        let dynamicCooldown = max(1.5, Constants.shotCooldown - Double(speedFactor / 350.0))
+        // Динамічний кулдаун: на надвисокій швидкості гри плавно скорочується до 1.2 с
+        let dynamicCooldown = max(1.20, Constants.shotCooldown - Double(speedFactor / 350.0))
         guard currentTime - lastShotTime >= dynamicCooldown else { return }
         
         // Динамічні часові інтервали атаки під поточну швидкість гри
-        let dynamicTelegraph = max(0.18, Constants.telegraphDuration - Double(speedFactor / 1100.0))
-        let dynamicVolleyDelay = max(0.48, Constants.volleyDelay - Double(speedFactor / 700.0))
-        let dynamicLead = min(130.0, Constants.leadAheadY + (speedFactor * 0.15))
+        let dynamicTelegraph = max(0.14, Constants.telegraphDuration - Double(speedFactor / 1100.0))
+        let dynamicVolleyDelay = max(0.38, Constants.volleyDelay - Double(speedFactor / 700.0))
+        let dynamicLead = min(170.0, Constants.leadAheadY + (speedFactor * 0.18))
         
         // 3. Запуск серії пострілів (1 постріл на початкових рівнях, максимум 2 на високих)
         triggerAttackVolley(
