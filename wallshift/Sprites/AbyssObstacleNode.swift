@@ -38,7 +38,7 @@ final class AbyssObstacleNode: SKNode {
         // Хітбокс для реєстрації падіння гравця в прірву.
         // Зміщення по висоті вгору усуває передчасне спрацьовування, поки герой ще біжить по твердій скелі.
         // Зіткнення фіксується точно тоді, коли персонаж перетинає край уступу і сходить у порожнечу.
-        let triggerWidth = wallWidth + 30.0
+        let triggerWidth = wallWidth + 20.0
         let triggerHeight = max(gapHeight - 32.0, 20.0)
         let triggerCenter = CGPoint(x: 0, y: 6.0)
         

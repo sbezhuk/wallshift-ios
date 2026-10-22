@@ -140,7 +140,7 @@ final class PlayerNode: SKSpriteNode {
         
         currentState = .running
         let runAction = SKAction.repeatForever(
-            SKAction.animate(with: activeRunningTextures, timePerFrame: Constants.timePerFrame, resize: false, restore: true)
+            SKAction.animate(with: activeRunningTextures, timePerFrame: Constants.timePerFrame, resize: false, restore: false)
         )
         run(runAction, withKey: "runAnimation")
     }
@@ -160,6 +160,13 @@ final class PlayerNode: SKSpriteNode {
         removeAction(forKey: "landingCushion")
         self.yScale = 1.0
         currentState = .jumping
+        
+        // Гарантуємо чистий візуальний стан персонажа (без залишкових бліків чи напівпрозорості)
+        if !isInvulnerable {
+            self.alpha = 1.0
+            self.color = .clear
+            self.colorBlendFactor = 0.0
+        }
         
         // 1. Горизонтальний рух із вибуховим стартом (.easeOut замість повільного розгону .easeInEaseOut)
         let moveX = SKAction.moveTo(x: targetX, duration: duration)
@@ -192,6 +199,13 @@ final class PlayerNode: SKSpriteNode {
             self.position.x = targetX
             self.updateOrientation(forLeftWall: self.isOnLeftWall)
             self.currentState = .running
+            
+            // Чистий рендеринг без бліків при приземленні
+            if !self.isInvulnerable {
+                self.alpha = 1.0
+                self.color = .clear
+                self.colorBlendFactor = 0.0
+            }
             
             // Амортизація ногами (squash & stretch) при ударі об стіну
             let landingCushion = SKAction.sequence([

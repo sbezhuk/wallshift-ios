@@ -2017,6 +2017,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             (menu.childNode(withName: "menuPlayButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiPrimaryBtnName)
             (menu.childNode(withName: "menuShopButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiSecondaryBtnName)
             (menu.childNode(withName: "menuSoundButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
+            (menu.childNode(withName: "menuAchievementsButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
         }
         
         // 5. Оновлення елементів інтерфейсу магазину (якщо відкритий)
@@ -2029,6 +2030,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 (balanceNode.childNode(withName: "shopCoinIcon") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCoinIconName)
             }
             updateShopAdRewardButtonState()
+        }
+        
+        // 5b. Оновлення елементів інтерфейсу досягнень (якщо відкритий)
+        if let achCard = achievementsNode?.childNode(withName: "achievementsCard") {
+            (achCard.childNode(withName: "achievementsBanner") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiBannerName)
+            (achCard.childNode(withName: "achievementsCloseButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
+            (achCard.childNode(withName: "achievementsPrevButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
+            (achCard.childNode(withName: "achievementsNextButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
         }
         
         // 6. Оновлення лічильника меню
@@ -3489,7 +3498,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // 1. Потрапляння у прірву
         if mask == (PhysicsCategory.player | PhysicsCategory.abyss) {
+            // Гравець у стрибку/польоті летить над прірвою і не може в неї впасти.
+            // Також прірва на протилежній стіні не повинна вражати героя, поки він біжить або приземляється.
+            guard !player.isJumping else { return }
             let abyssNode = (contact.bodyA.categoryBitMask == PhysicsCategory.abyss ? contact.bodyA.node : contact.bodyB.node) as? AbyssObstacleNode
+            guard let abyss = abyssNode, abyss.isOnLeftWall == player.isOnLeftWall else { return }
             handleAbyssHit(abyss: abyssNode)
         }
         
@@ -3505,6 +3518,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             guard !player.isInvulnerable else { return }
             let otherNode = contact.bodyA.categoryBitMask == PhysicsCategory.obstacle ? contact.bodyA.node : contact.bodyB.node
             if let mobNode = otherNode as? MobNode {
+                // Моб на іншій стіні не може вразити гравця, якщо той у повітрі або на протилежній стороні
+                guard !player.isJumping || mobNode.isOnLeftWall == player.isOnLeftWall else { return }
                 handleMobHit(mob: mobNode)
             } else if let arrowNode = otherNode as? FireArrowNode {
                 handleArrowHit(arrow: arrowNode)

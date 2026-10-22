@@ -425,7 +425,9 @@ extension GameScene {
                 
             } else {
                 let lockIcon = SKSpriteNode(imageNamed: "gui_icon_lock")
-                lockIcon.size = CGSize(width: 20.0, height: 20.0)
+                let lockH: CGFloat = 21.0
+                let lockW: CGFloat = lockH * (130.0 / 164.0)
+                lockIcon.size = CGSize(width: lockW, height: lockH)
                 lockIcon.position = CGPoint(x: actionX + 4.0, y: actionY + 8.0)
                 itemNode.addChild(lockIcon)
                 
