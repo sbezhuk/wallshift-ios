@@ -7,14 +7,6 @@
 
 import SpriteKit
 
-// MARK: - Player State
-enum PlayerState {
-    case idle
-    case running
-    case jumping
-    case dead
-}
-
 // MARK: - PlayerNode
 /// Окремий вузол для головного героя з інкапсуляцією анімацій, текстур та фізики бігу по стіні
 final class PlayerNode: SKSpriteNode {
