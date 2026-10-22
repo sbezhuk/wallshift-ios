@@ -19,6 +19,9 @@ class GameViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
+        // Ініціалізація моніторингу мережі
+        NetworkMonitor.shared.start()
+        
         // Ініціалізація Unity Ads для показу відеореклами з нагородою
         UnityAdsManager.shared.initialize()
     }

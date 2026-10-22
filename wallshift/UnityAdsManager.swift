@@ -34,6 +34,23 @@ final class UnityAdsManager: NSObject {
     
     private override init() {
         super.init()
+        NotificationCenter.default.addObserver(
+            forName: .networkStatusChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] notif in
+            guard let self = self else { return }
+            let connected = (notif.userInfo?["isConnected"] as? Bool) ?? false
+            if connected {
+                if !self.isInitialized {
+                    print("[UnityAdsManager] Network restored: initializing Unity Ads SDK")
+                    self.initialize()
+                } else if !self.isRewardedAdLoaded {
+                    print("[UnityAdsManager] Network restored: loading rewarded ad")
+                    self.loadRewardedAd()
+                }
+            }
+        }
     }
     
     /// Initializes Unity Ads SDK
@@ -45,12 +62,21 @@ final class UnityAdsManager: NSObject {
             self.testMode = tMode
         }
         
+        guard NetworkMonitor.shared.isConnected else {
+            print("[UnityAdsManager] Postponing initialization: no internet connection")
+            return
+        }
+        
         print("[UnityAdsManager] Initializing Unity Ads with gameId: \(self.gameId), testMode: \(self.testMode)")
         UnityAds.initialize(self.gameId, testMode: self.testMode, initializationDelegate: self)
     }
     
     /// Preloads rewarded video ad for revival
     func loadRewardedAd() {
+        guard NetworkMonitor.shared.isConnected else {
+            print("[UnityAdsManager] Postponing ad load: no internet connection")
+            return
+        }
         guard isInitialized else {
             print("[UnityAdsManager] Postponing ad load: SDK not yet initialized")
             return
@@ -61,7 +87,7 @@ final class UnityAdsManager: NSObject {
     
     /// Preloads interstitial ad
     func loadInterstitialAd() {
-        guard isInitialized else { return }
+        guard NetworkMonitor.shared.isConnected, isInitialized else { return }
         print("[UnityAdsManager] Loading interstitial ad for placement: \(interstitialPlacementId)")
         UnityAds.load(interstitialPlacementId, loadDelegate: self)
     }
@@ -69,9 +95,15 @@ final class UnityAdsManager: NSObject {
     /// Shows rewarded ad. If completed, onRewarded closure is called.
     func showRewardedAd(
         from viewController: UIViewController,
+        customMessage: String? = nil,
+        actionTitle: String = "Watch Ad",
         onRewarded: @escaping () -> Void,
         onFailed: @escaping (String) -> Void
     ) {
+        guard NetworkMonitor.shared.isConnected else {
+            onFailed("No internet connection")
+            return
+        }
         guard !isAdShowing else {
             onFailed("Ad is already showing")
             return
@@ -83,7 +115,7 @@ final class UnityAdsManager: NSObject {
         #if targetEnvironment(simulator)
         if !isRewardedAdLoaded {
             print("[UnityAdsManager] Running in Simulator: presenting simulated rewarded ad dialog")
-            showSimulatorAdAlert(from: viewController)
+            showSimulatorAdAlert(from: viewController, message: customMessage, actionTitle: actionTitle)
             return
         }
         #endif
@@ -93,7 +125,7 @@ final class UnityAdsManager: NSObject {
             UnityAds.show(viewController, placementId: rewardedPlacementId, showDelegate: self)
         } else {
             #if targetEnvironment(simulator)
-            showSimulatorAdAlert(from: viewController)
+            showSimulatorAdAlert(from: viewController, message: customMessage, actionTitle: actionTitle)
             #else
             isAdShowing = true
             UnityAds.show(viewController, placementId: rewardedPlacementId, showDelegate: self)
@@ -125,13 +157,17 @@ final class UnityAdsManager: NSObject {
     }
     
     #if targetEnvironment(simulator)
-    private func showSimulatorAdAlert(from viewController: UIViewController) {
+    private func showSimulatorAdAlert(
+        from viewController: UIViewController,
+        message: String? = nil,
+        actionTitle: String = "Watch Ad"
+    ) {
         let alert = UIAlertController(
             title: "Unity Ads (Simulator)",
-            message: "Simulating Rewarded Video Ad playback.\nPress 'Watch & Revive' to continue playing with 1 heart.",
+            message: message ?? "Simulating Rewarded Video Ad playback.\nPress '\(actionTitle)' to continue and claim your reward.",
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Watch & Revive", style: .default, handler: { [weak self] _ in
+        alert.addAction(UIAlertAction(title: actionTitle, style: .default, handler: { [weak self] _ in
             self?.isAdShowing = false
             self?.onAdSuccess?()
             self?.onAdSuccess = nil

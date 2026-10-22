@@ -404,6 +404,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     // Ноди та елементи маркету/магазину
     private var shopNode: SKNode?
     private var currentShopIndex: Int = 0
+    private var shopAdRewardBtnNode: SKNode?
+    private var shopAdRewardBgSprite: SKSpriteNode?
+    private var shopAdRewardLabel: SKLabelNode?
+    private var shopAdRewardPlayIcon: SKSpriteNode?
+    private var shopAdRewardCoinIcon: SKSpriteNode?
     private var backgroundNode: SKSpriteNode?
     private var backgroundOverlayNode: SKSpriteNode?
     private var backgroundTopExtensionNode: SKSpriteNode?
@@ -1204,7 +1209,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // 2. Основна плашка магазину
         let cardW: CGFloat = min(330.0, size.width - 32.0)
-        let cardH: CGFloat = min(490.0, size.height * 0.74)
+        let cardH: CGFloat = min(530.0, size.height * 0.78)
         let card = SKSpriteNode(imageNamed: "gui_card_box")
         card.name = "shopCard"
         card.size = CGSize(width: cardW, height: cardH)
@@ -1250,7 +1255,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // 5. Баланс монет у верхній частині картки
         let balanceNode = SKNode()
         balanceNode.name = "shopBalanceNode"
-        balanceNode.position = CGPoint(x: 0, y: cardH * 0.30)
+        balanceNode.position = CGPoint(x: 0, y: cardH * 0.31)
         balanceNode.zPosition = 5
         card.addChild(balanceNode)
         
@@ -1278,7 +1283,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let arrowLeft = SKSpriteNode(imageNamed: currentTheme.guiCircleBtnName)
         arrowLeft.name = "shopPrevButton"
         arrowLeft.size = CGSize(width: 44.0, height: 44.0)
-        arrowLeft.position = CGPoint(x: -cardW * 0.40, y: cardH * 0.05)
+        arrowLeft.position = CGPoint(x: -cardW * 0.40, y: cardH * 0.08)
         arrowLeft.zPosition = 8
         card.addChild(arrowLeft)
         
@@ -1293,7 +1298,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         arrowRight.name = "shopNextButton"
         arrowRight.name = "shopNextButton"
         arrowRight.size = CGSize(width: 44.0, height: 44.0)
-        arrowRight.position = CGPoint(x: cardW * 0.40, y: cardH * 0.05)
+        arrowRight.position = CGPoint(x: cardW * 0.40, y: cardH * 0.08)
         arrowRight.zPosition = 8
         card.addChild(arrowRight)
         
@@ -1309,6 +1314,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         contentContainer.name = "shopDynamicContent"
         contentContainer.zPosition = 5
         card.addChild(contentContainer)
+        
+        // 8. Кнопка перегляду реклами для отримання безкоштовних монет
+        setupShopAdRewardButton(on: card, cardW: cardW, cardH: cardH)
         
         // Рендеримо картку ДО застосування початкового масштабу появи,
         // щоб розміри та позиції не спотворювалися масштабуванням картки
@@ -1349,17 +1357,18 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let cardSprite = card as? SKSpriteNode
         let scaleY = abs(cardSprite?.yScale ?? 1.0)
         let currentScaleY = scaleY > 0.001 ? scaleY : 1.0
-        let cardH = (cardSprite?.size.height ?? 490.0) / currentScaleY
+        let cardH = (cardSprite?.size.height ?? 530.0) / currentScaleY
+        let cardW = (cardSprite?.size.width ?? 330.0)
         
         // А. П'єдестал та аватар персонажа
         let avatarBg = SKSpriteNode(imageNamed: theme.guiCardFrameName)
-        avatarBg.size = CGSize(width: 136.0, height: 136.0)
-        avatarBg.position = CGPoint(x: 0, y: cardH * 0.05)
+        avatarBg.size = CGSize(width: 122.0, height: 122.0)
+        avatarBg.position = CGPoint(x: 0, y: cardH * 0.08)
         avatarBg.zPosition = 1
         content.addChild(avatarBg)
         
         let heroAvatar = SKSpriteNode(imageNamed: theme.previewImageName)
-        heroAvatar.size = CGSize(width: 96.0, height: 96.0)
+        heroAvatar.size = CGSize(width: 86.0, height: 86.0)
         heroAvatar.position = CGPoint(x: 0, y: -4.0)
         heroAvatar.zPosition = 2
         avatarBg.addChild(heroAvatar)
@@ -1374,16 +1383,16 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // Статусний бейдж на кутку аватара
         if isSelected {
             let badge = SKSpriteNode(imageNamed: "gui_icon_check")
-            badge.size = CGSize(width: 26.0, height: 26.0)
-            badge.position = CGPoint(x: 52.0, y: 52.0)
+            badge.size = CGSize(width: 24.0, height: 24.0)
+            badge.position = CGPoint(x: 46.0, y: 46.0)
             badge.zPosition = 5
             avatarBg.addChild(badge)
         } else if !isUnlocked {
             let lock = SKSpriteNode(imageNamed: "gui_icon_lock")
-            let lockH: CGFloat = 27.0
+            let lockH: CGFloat = 24.0
             let lockW: CGFloat = lockH * (130.0 / 164.0)
             lock.size = CGSize(width: lockW, height: lockH)
-            lock.position = CGPoint(x: 52.0, y: 52.0)
+            lock.position = CGPoint(x: 46.0, y: 46.0)
             lock.zPosition = 5
             avatarBg.addChild(lock)
         }
@@ -1392,24 +1401,24 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let avatarBottomY = avatarBg.position.y - (avatarBg.size.height / 2.0)
         let titleLabel = SKLabelNode(fontNamed: AppFont.name)
         titleLabel.text = theme.name
-        titleLabel.fontSize = 18.0
+        titleLabel.fontSize = 17.0
         titleLabel.fontColor = .white
-        titleLabel.position = CGPoint(x: 0, y: avatarBottomY - 24.0)
+        titleLabel.position = CGPoint(x: 0, y: avatarBottomY - 18.0)
         titleLabel.zPosition = 2
         content.addChild(titleLabel)
         
         // В. Опис характеристик
         let subtitleLabel = SKLabelNode(fontNamed: AppFont.name)
         subtitleLabel.text = theme.subtitle
-        subtitleLabel.fontSize = 13.0
+        subtitleLabel.fontSize = 12.0
         subtitleLabel.fontColor = SKColor(red: 0.95, green: 0.90, blue: 0.80, alpha: 0.90)
-        subtitleLabel.position = CGPoint(x: 0, y: titleLabel.position.y - 22.0)
+        subtitleLabel.position = CGPoint(x: 0, y: titleLabel.position.y - 17.0)
         subtitleLabel.zPosition = 2
         content.addChild(subtitleLabel)
         
         // Г. Індикатор пагінації (точки 1 2 3)
         let dotsContainer = SKNode()
-        dotsContainer.position = CGPoint(x: 0, y: subtitleLabel.position.y - 24.0)
+        dotsContainer.position = CGPoint(x: 0, y: subtitleLabel.position.y - 17.0)
         dotsContainer.zPosition = 2
         content.addChild(dotsContainer)
         
@@ -1424,11 +1433,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         
         // Д. Кнопка дії (ОБРАНО / ОБРАТИ / КУПИТИ)
-        let btnW: CGFloat = 220.0
-        let btnH: CGFloat = 54.0
+        let btnW: CGFloat = min(220.0, cardW - 60.0)
+        let btnH: CGFloat = 46.0
         let actionBtnNode = SKNode()
         actionBtnNode.name = isSelected ? "shopAlreadySelected" : "shopActionButton"
-        actionBtnNode.position = CGPoint(x: 0, y: -cardH * 0.38)
+        actionBtnNode.position = CGPoint(x: 0, y: -cardH * 0.24)
         actionBtnNode.zPosition = 3
         content.addChild(actionBtnNode)
         
@@ -1441,7 +1450,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             
             let checkIcon = SKSpriteNode(imageNamed: "gui_icon_check")
             checkIcon.name = "shopAlreadySelected"
-            checkIcon.size = CGSize(width: 20.0, height: 20.0)
+            checkIcon.size = CGSize(width: 18.0, height: 18.0)
             checkIcon.position = CGPoint(x: -42.0, y: 1.0)
             checkIcon.zPosition = 3
             btnBg.addChild(checkIcon)
@@ -1449,7 +1458,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             let label = SKLabelNode(fontNamed: AppFont.name)
             label.name = "shopAlreadySelected"
             label.text = "SELECTED"
-            label.fontSize = 20.0
+            label.fontSize = 18.0
             label.fontColor = .white
             label.verticalAlignmentMode = .center
             label.position = CGPoint(x: 10.0, y: 1.0)
@@ -1465,7 +1474,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             let label = SKLabelNode(fontNamed: AppFont.name)
             label.name = "shopActionButton"
             label.text = "SELECT"
-            label.fontSize = 20.0
+            label.fontSize = 18.0
             label.fontColor = .white
             label.verticalAlignmentMode = .center
             label.position = CGPoint(x: 0, y: 1.0)
@@ -1486,14 +1495,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             
             let coin = SKSpriteNode(imageNamed: "gui_icon_coin")
             coin.name = "shopActionButton"
-            coin.size = CGSize(width: 20.0, height: 20.0)
+            coin.size = CGSize(width: 19.0, height: 19.0)
             coin.zPosition = 3
             
             let label = SKLabelNode(fontNamed: AppFont.name)
             label.name = "shopActionButton"
             let formattedPrice = theme.price.formattedWithSeparator
             label.text = canAfford ? "BUY (\(formattedPrice))" : "\(formattedPrice) (NOT ENOUGH)"
-            label.fontSize = canAfford ? 18.0 : 14.5
+            label.fontSize = canAfford ? 17.0 : 13.5
             label.fontColor = canAfford ? .white : SKColor(white: 0.95, alpha: 1.0)
             label.verticalAlignmentMode = .center
             label.zPosition = 3
@@ -1520,6 +1529,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             SKAction.removeFromParent()
         ]))
         self.shopNode = nil
+        self.shopAdRewardBtnNode = nil
+        self.shopAdRewardBgSprite = nil
+        self.shopAdRewardLabel = nil
+        self.shopAdRewardPlayIcon = nil
+        self.shopAdRewardCoinIcon = nil
         
         // Оновлюємо лічильник монет у меню
         updateMenuCoinsDisplay()
@@ -1533,6 +1547,317 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     /// Оновлення лічильника монет у меню після покупок
     private func updateMenuCoinsDisplay() {
         menuCoinsText?.text = totalCoins.formattedWithSeparator
+    }
+    
+    // MARK: - Shop Ad Reward Feature
+    
+    /// Налаштування кнопки перегляду реклами для отримання безкоштовних монет
+    private func setupShopAdRewardButton(on card: SKNode, cardW: CGFloat, cardH: CGFloat) {
+        let btnW: CGFloat = min(220.0, cardW - 60.0)
+        let btnH: CGFloat = 44.0
+        
+        let container = SKNode()
+        container.name = "shopAdRewardButton"
+        container.position = CGPoint(x: 0, y: -cardH * 0.385)
+        container.zPosition = 8
+        card.addChild(container)
+        self.shopAdRewardBtnNode = container
+        
+        let bgSprite = SKSpriteNode(imageNamed: "gui_btn_large_green")
+        bgSprite.name = "shopAdRewardButton"
+        bgSprite.size = CGSize(width: btnW, height: btnH)
+        bgSprite.zPosition = 1
+        container.addChild(bgSprite)
+        self.shopAdRewardBgSprite = bgSprite
+        
+        let playIcon = SKSpriteNode(imageNamed: "gui_icon_play")
+        playIcon.name = "shopAdRewardButton"
+        playIcon.size = CGSize(width: 16.0, height: 16.0)
+        playIcon.zPosition = 3
+        bgSprite.addChild(playIcon)
+        self.shopAdRewardPlayIcon = playIcon
+        
+        let label = SKLabelNode(fontNamed: AppFont.name)
+        label.name = "shopAdRewardButton"
+        label.fontSize = 16.0
+        label.fontColor = .white
+        label.verticalAlignmentMode = .center
+        label.horizontalAlignmentMode = .center
+        label.zPosition = 3
+        bgSprite.addChild(label)
+        self.shopAdRewardLabel = label
+        
+        let coinIcon = SKSpriteNode(imageNamed: "gui_icon_coin_outline")
+        coinIcon.name = "shopAdRewardButton"
+        coinIcon.size = CGSize(width: 20.0, height: 20.0)
+        coinIcon.zPosition = 3
+        bgSprite.addChild(coinIcon)
+        self.shopAdRewardCoinIcon = coinIcon
+        
+        // Початкове налаштування стану (доступно чи кулдаун)
+        updateShopAdRewardButtonState()
+        
+        // Таймер для щосекундного оновлення кулдауну
+        container.removeAction(forKey: "shopAdTimer")
+        let timerAction = SKAction.repeatForever(SKAction.sequence([
+            SKAction.wait(forDuration: 1.0),
+            SKAction.run { [weak self] in
+                self?.updateShopAdRewardTimerTick()
+            }
+        ]))
+        container.run(timerAction, withKey: "shopAdTimer")
+    }
+    
+    /// Оновлення візуального стану кнопки реклами в магазині
+    private func updateShopAdRewardButtonState() {
+        guard let container = shopAdRewardBtnNode,
+              let bg = shopAdRewardBgSprite,
+              let label = shopAdRewardLabel,
+              let coin = shopAdRewardCoinIcon,
+              let play = shopAdRewardPlayIcon else { return }
+        
+        // 1. Якщо відсутнє інтернет-підключення — кнопка вимкнена
+        guard NetworkMonitor.shared.isConnected else {
+            container.removeAction(forKey: "adPulse")
+            container.setScale(1.0)
+            
+            bg.texture = SKTexture(imageNamed: currentTheme.guiSecondaryBtnName)
+            bg.color = .black
+            bg.colorBlendFactor = 0.35
+            bg.alpha = 0.60
+            
+            play.isHidden = true
+            coin.isHidden = true
+            label.text = "NO INTERNET"
+            label.fontColor = SKColor(white: 0.82, alpha: 0.85)
+            label.horizontalAlignmentMode = .center
+            label.position = CGPoint(x: 0, y: 1.0)
+            return
+        }
+        
+        let isAvailable = ShopAdRewardManager.shared.isRewardAvailable
+        coin.isHidden = false
+        
+        if isAvailable {
+            bg.texture = SKTexture(imageNamed: "gui_btn_large_green")
+            bg.color = .clear
+            bg.colorBlendFactor = 0.0
+            bg.alpha = 1.0
+            
+            play.isHidden = false
+            label.text = "FREE +\(ShopAdRewardManager.rewardCoins)"
+            label.fontColor = .white
+            
+            // Центроване розташування [Play] [Text] [Coin]
+            let spacing: CGFloat = 6.0
+            let totalW = play.size.width + spacing + label.frame.width + spacing + coin.size.width
+            let startX = -totalW / 2.0
+            
+            play.position = CGPoint(x: startX + (play.size.width / 2.0), y: 1.0)
+            label.horizontalAlignmentMode = .left
+            label.position = CGPoint(x: play.position.x + (play.size.width / 2.0) + spacing, y: 1.0)
+            coin.position = CGPoint(x: label.position.x + label.frame.width + spacing + (coin.size.width / 2.0), y: 1.0)
+            
+            // М'яка пульсація для привернення уваги, що нагорода доступна
+            container.removeAction(forKey: "adPulse")
+            let pulseUp = SKAction.scale(to: 1.035, duration: 0.85)
+            let pulseDown = SKAction.scale(to: 0.975, duration: 0.85)
+            pulseUp.timingMode = .easeInEaseOut
+            pulseDown.timingMode = .easeInEaseOut
+            container.run(SKAction.repeatForever(SKAction.sequence([pulseUp, pulseDown])), withKey: "adPulse")
+        } else {
+            container.removeAction(forKey: "adPulse")
+            container.setScale(1.0)
+            
+            bg.texture = SKTexture(imageNamed: currentTheme.guiSecondaryBtnName)
+            bg.color = .black
+            bg.colorBlendFactor = 0.25
+            bg.alpha = 0.85
+            
+            play.isHidden = true
+            label.text = ShopAdRewardManager.shared.formattedCooldownString()
+            label.fontColor = SKColor(white: 0.92, alpha: 1.0)
+            
+            // Центроване розташування [Coin] [Cooldown Text]
+            let spacing: CGFloat = 8.0
+            let totalW = coin.size.width + spacing + label.frame.width
+            let startX = -totalW / 2.0
+            
+            coin.position = CGPoint(x: startX + (coin.size.width / 2.0), y: 1.0)
+            label.horizontalAlignmentMode = .left
+            label.position = CGPoint(x: startX + coin.size.width + spacing, y: 1.0)
+        }
+    }
+    
+    /// Щосекундний тік таймера кулдауну
+    private func updateShopAdRewardTimerTick() {
+        guard let label = shopAdRewardLabel,
+              let coin = shopAdRewardCoinIcon,
+              let container = shopAdRewardBtnNode else { return }
+        
+        let isConnected = NetworkMonitor.shared.isConnected
+        let wasOffline = (coin.isHidden == true)
+        
+        if !isConnected {
+            if !wasOffline {
+                updateShopAdRewardButtonState()
+            }
+            return
+        }
+        
+        if wasOffline {
+            // Мережа щойно відновилась
+            updateShopAdRewardButtonState()
+            return
+        }
+        
+        let isAvailable = ShopAdRewardManager.shared.isRewardAvailable
+        let wasAvailable = (shopAdRewardPlayIcon?.isHidden == false)
+        
+        if isAvailable {
+            if !wasAvailable {
+                // Завершення кулдауну: оновлюємо вигляд та запускаємо анімацію появи готовності
+                updateShopAdRewardButtonState()
+                container.run(SKAction.sequence([
+                    SKAction.scale(to: 1.15, duration: 0.15),
+                    SKAction.scale(to: 1.0, duration: 0.15)
+                ]))
+            }
+        } else {
+            label.text = ShopAdRewardManager.shared.formattedCooldownString()
+            let spacing: CGFloat = 8.0
+            let totalW = coin.size.width + spacing + label.frame.width
+            let startX = -totalW / 2.0
+            coin.position = CGPoint(x: startX + (coin.size.width / 2.0), y: 1.0)
+            label.position = CGPoint(x: startX + coin.size.width + spacing, y: 1.0)
+        }
+    }
+    
+    /// Обробка натискання кнопки реклами в магазині
+    private func handleShopAdRewardTapped() {
+        guard let shop = shopNode,
+              let card = shop.childNode(withName: "shopCard") else { return }
+        
+        // 1. Перевірка наявності інтернет-з'єднання
+        guard NetworkMonitor.shared.isConnected else {
+            playJumpSound()
+            if let btn = shopAdRewardBtnNode {
+                let left = SKAction.moveBy(x: -6, y: 0, duration: 0.05)
+                let right = SKAction.moveBy(x: 12, y: 0, duration: 0.08)
+                let back = SKAction.moveBy(x: -6, y: 0, duration: 0.05)
+                btn.run(SKAction.sequence([left, right, back]))
+            }
+            showShopAdToast(on: card, text: "NO INTERNET CONNECTION", isSuccess: false)
+            return
+        }
+        
+        // 2. Перевірка кулдауну
+        if !ShopAdRewardManager.shared.isRewardAvailable {
+            // Кулдаун ще активний: похитування кнопки та підказка з часом до наступної нагороди
+            playJumpSound()
+            if let btn = shopAdRewardBtnNode {
+                let left = SKAction.moveBy(x: -6, y: 0, duration: 0.05)
+                let right = SKAction.moveBy(x: 12, y: 0, duration: 0.08)
+                let back = SKAction.moveBy(x: -6, y: 0, duration: 0.05)
+                btn.run(SKAction.sequence([left, right, back]))
+            }
+            showShopAdToast(on: card, text: "READY IN \(ShopAdRewardManager.shared.cooldownDescriptionString())", isSuccess: false)
+            return
+        }
+        
+        guard let vc = view?.window?.rootViewController ?? view?.next as? UIViewController else { return }
+        playJumpSound()
+        
+        UnityAdsManager.shared.showRewardedAd(
+            from: vc,
+            customMessage: "Simulating Rewarded Video Ad playback.\nPress 'Claim Reward' to get +\(ShopAdRewardManager.rewardCoins) Coins for the Market!",
+            actionTitle: "Claim +\(ShopAdRewardManager.rewardCoins) Coins"
+        ) { [weak self] in
+            guard let self = self else { return }
+            
+            // 1. Зараховуємо нагороду
+            let earned = ShopAdRewardManager.shared.claimReward()
+            
+            // 2. Звук та частинки золотих монет
+            self.playCoinSound()
+            if let btn = self.shopAdRewardBtnNode {
+                let scenePos = card.convert(btn.position, to: self)
+                self.playCoinPickupEffect(at: scenePos)
+            }
+            
+            // 3. Оновлення балансу в магазині з привабливою пульсацією
+            if let balance = card.childNode(withName: "shopBalanceNode")?.childNode(withName: "shopBalanceLabel") as? SKLabelNode,
+               let coin = card.childNode(withName: "shopBalanceNode")?.childNode(withName: "shopCoinIcon") as? SKSpriteNode {
+                balance.text = self.totalCoins.formattedWithSeparator
+                let balSpacing: CGFloat = 8.0
+                let totalW = coin.size.width + balSpacing + balance.frame.width
+                coin.position = CGPoint(x: -totalW / 2.0 + coin.size.width / 2.0, y: 0)
+                balance.position = CGPoint(x: coin.position.x + coin.size.width / 2.0 + balSpacing, y: 0)
+                
+                balance.run(SKAction.sequence([
+                    SKAction.scale(to: 1.30, duration: 0.15),
+                    SKAction.scale(to: 1.0, duration: 0.15)
+                ]))
+            }
+            
+            // 4. Оновлення поточної картки скіна (якщо монет стало достатньо для купівлі)
+            self.renderCurrentShopCard()
+            
+            // 5. Оновлення лічильника монет у головному меню
+            self.updateMenuCoinsDisplay()
+            
+            // 6. Перехід кнопки в режим очікування кулдауну
+            self.updateShopAdRewardButtonState()
+            
+            // 7. Спливаюче повідомлення про успішне отримання монет
+            self.showShopAdToast(on: card, text: "+\(earned) COINS RECEIVED!", isSuccess: true)
+            
+        } onFailed: { message in
+            print("[GameScene] Shop rewarded ad failed or skipped: \(message)")
+        }
+    }
+    
+    /// Відображення акуратного спливаючого тосту над кнопкою нагороди
+    private func showShopAdToast(on card: SKNode, text: String, isSuccess: Bool) {
+        card.childNode(withName: "shopAdToast")?.removeFromParent()
+        
+        let toast = SKNode()
+        toast.name = "shopAdToast"
+        toast.position = CGPoint(x: 0, y: (shopAdRewardBtnNode?.position.y ?? -200.0) + 36.0)
+        toast.zPosition = 20
+        
+        let label = SKLabelNode(fontNamed: AppFont.name)
+        label.text = text
+        label.fontSize = 13.5
+        label.fontColor = isSuccess ? SKColor(red: 1.0, green: 0.90, blue: 0.30, alpha: 1.0) : SKColor(red: 1.0, green: 0.45, blue: 0.40, alpha: 1.0)
+        label.verticalAlignmentMode = .center
+        label.horizontalAlignmentMode = .center
+        label.zPosition = 2
+        toast.addChild(label)
+        
+        let bgW = label.frame.width + 20.0
+        let bgH: CGFloat = 26.0
+        let bg = SKShapeNode(rectOf: CGSize(width: bgW, height: bgH), cornerRadius: 6.0)
+        bg.fillColor = SKColor.black.withAlphaComponent(0.85)
+        bg.strokeColor = isSuccess ? SKColor(red: 1.0, green: 0.85, blue: 0.20, alpha: 0.9) : SKColor.white.withAlphaComponent(0.3)
+        bg.lineWidth = 1.0
+        bg.zPosition = 1
+        toast.addChild(bg)
+        
+        card.addChild(toast)
+        
+        toast.alpha = 0.0
+        toast.setScale(0.85)
+        let appear = SKAction.group([
+            SKAction.fadeIn(withDuration: 0.15),
+            SKAction.scale(to: 1.0, duration: 0.15)
+        ])
+        let wait = SKAction.wait(forDuration: 1.6)
+        let disappear = SKAction.group([
+            SKAction.fadeOut(withDuration: 0.25),
+            SKAction.moveBy(x: 0, y: 10, duration: 0.25)
+        ])
+        toast.run(SKAction.sequence([appear, wait, disappear, SKAction.removeFromParent()]))
     }
     
     /// Миттєве застосування поточної теми до сцени (персонаж, стіни, фон)
@@ -1619,6 +1944,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             (card.childNode(withName: "shopCloseButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
             (card.childNode(withName: "shopPrevButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
             (card.childNode(withName: "shopNextButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
+            updateShopAdRewardButtonState()
         }
         
         // 6. Оновлення лічильника меню
@@ -2511,6 +2837,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                     return
                 }
                 
+                if nodeName == "shopAdRewardButton" {
+                    handleShopAdRewardTapped()
+                    return
+                }
+                
                 if nodeName == "shopActionButton" {
                     let themes = ThemeManager.shared.themes
                     guard currentShopIndex >= 0, currentShopIndex < themes.count else { return }
@@ -2530,6 +2861,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                         playCoinPickupEffect(at: CGPoint(x: 0, y: -size.height * 0.15))
                         applyCurrentThemeToScene()
                         renderCurrentShopCard()
+                        updateShopAdRewardButtonState()
                     } else {
                         // Не вистачає монет — похитування кнопки
                         if let card = shop.childNode(withName: "shopCard"),
@@ -3112,12 +3444,13 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         self.gameOverDoubleCoinsBtn = nil
         self.gameOverDoubleCoinsLabel = nil
         
-        let hasAdButton = !hasUsedAdRevive || (coinsCollected > 0 || hasUsedAdDoubleCoins)
+        let isOnline = NetworkMonitor.shared.isConnected
+        let hasAdButton = isOnline && (!hasUsedAdRevive || (coinsCollected > 0 || hasUsedAdDoubleCoins))
         let retryBtnY: CGFloat = hasAdButton ? -86.0 : -42.0
         let menuBtnY: CGFloat = hasAdButton ? -144.0 : -104.0
         
-        // Кнопка 1: Рекламна нагорода (1-й раз: REVIVE, 2-й раз: DOUBLE COINS 2X)
-        if !hasUsedAdRevive {
+        // Кнопка 1: Рекламна нагорода (1-й раз: REVIVE, 2-й раз: DOUBLE COINS 2X) — показується лише онлайн
+        if isOnline && !hasUsedAdRevive {
             // Перший випадок: відродження з 1 життям за перегляд Unity Ads
             let reviveBtnW = dialogW - 50.0
             let reviveBtnH: CGFloat = 52.0
@@ -3145,7 +3478,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             reviveLabel.position = CGPoint(x: 12.0, y: 0)
             reviveLabel.zPosition = 4
             reviveBtn.addChild(reviveLabel)
-        } else if coinsCollected > 0 || hasUsedAdDoubleCoins {
+        } else if isOnline && (coinsCollected > 0 || hasUsedAdDoubleCoins) {
             // Другий випадок: подвоєння зібраних за забіг монет (x2)
             let doubleBtnW = dialogW - 50.0
             let doubleBtnH: CGFloat = 52.0
@@ -3240,7 +3573,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     
     /// Обробка натискання кнопки перегляду реклами Unity Ads для відродження (1-й раз)
     private func handleAdReviveTapped() {
-        guard isGameOver, !hasUsedAdRevive else { return }
+        guard isGameOver, !hasUsedAdRevive, NetworkMonitor.shared.isConnected else { return }
         guard let vc = view?.window?.rootViewController ?? view?.next as? UIViewController else { return }
         
         UnityAdsManager.shared.showRewardedAd(from: vc) { [weak self] in
@@ -3254,7 +3587,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     
     /// Обробка натискання кнопки перегляду реклами Unity Ads для подвоєння монет (2-й раз)
     private func handleAdDoubleCoinsTapped() {
-        guard isGameOver, hasUsedAdRevive, !hasUsedAdDoubleCoins, coinsCollected > 0 else { return }
+        guard isGameOver, hasUsedAdRevive, !hasUsedAdDoubleCoins, coinsCollected > 0, NetworkMonitor.shared.isConnected else { return }
         guard let vc = view?.window?.rootViewController ?? view?.next as? UIViewController else { return }
         
         UnityAdsManager.shared.showRewardedAd(from: vc) { [weak self] in
