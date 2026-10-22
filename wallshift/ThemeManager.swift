@@ -59,6 +59,9 @@ struct ThemeData {
     let coinFrameCount: Int
     let guiCoinIconName: String
     
+    // Star Icon
+    let guiStarIconName: String
+    
     // GUI Styling
     let guiBannerName: String
     let guiBannerShadowColor: SKColor
@@ -113,6 +116,7 @@ final class ThemeManager {
             coinTexturePrefix: "autumn_coin_",
             coinFrameCount: 6,
             guiCoinIconName: "autumn_coin_0",
+            guiStarIconName: "autumn_star",
             guiBannerName: "gui_banner_orange",
             guiBannerShadowColor: SKColor(red: 0.12, green: 0.05, blue: 0.02, alpha: 0.95),
             guiStatsBarName: "gui_bar_orange",
@@ -185,6 +189,7 @@ final class ThemeManager {
             coinTexturePrefix: "forest_coin_",
             coinFrameCount: 6,
             guiCoinIconName: "forest_coin_0",
+            guiStarIconName: "forest_star",
             guiBannerName: "gui_banner_green",
             guiBannerShadowColor: SKColor(red: 0.02, green: 0.12, blue: 0.04, alpha: 0.95),
             guiStatsBarName: "gui_bar_green",
@@ -257,6 +262,7 @@ final class ThemeManager {
             coinTexturePrefix: "crystal_coin_",
             coinFrameCount: 6,
             guiCoinIconName: "crystal_coin_0",
+            guiStarIconName: "crystal_star",
             guiBannerName: "gui_banner_blue",
             guiBannerShadowColor: SKColor(red: 0.02, green: 0.06, blue: 0.18, alpha: 0.95),
             guiStatsBarName: "gui_bar_blue",
@@ -329,6 +335,7 @@ final class ThemeManager {
             coinTexturePrefix: "graveyard_coin_",
             coinFrameCount: 6,
             guiCoinIconName: "graveyard_coin_0",
+            guiStarIconName: "graveyard_star",
             guiBannerName: "gui_banner_blue",
             guiBannerShadowColor: SKColor(red: 0.04, green: 0.02, blue: 0.08, alpha: 0.95),
             guiStatsBarName: "gui_bar_blue",

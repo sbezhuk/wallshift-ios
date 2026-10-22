@@ -65,6 +65,7 @@ final class ShopAdRewardManager {
     func claimReward() -> Int {
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastClaimTimestampKey)
         ThemeManager.shared.totalCoins += Self.rewardCoins
+        DynamicAdManager.shared.notifyRewardedAdWatched()
         print("[ShopAdRewardManager] Claimed \(Self.rewardCoins) coins! New total: \(ThemeManager.shared.totalCoins)")
         return Self.rewardCoins
     }

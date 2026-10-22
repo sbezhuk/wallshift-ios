@@ -44,7 +44,7 @@ extension GameScene {
         toastNode.addChild(bg)
         
         // 2. Іконка зірки
-        let starIcon = SKSpriteNode(imageNamed: "gui_icon_star")
+        let starIcon = SKSpriteNode(imageNamed: currentTheme.guiStarIconName)
         starIcon.size = CGSize(width: 28.0, height: 28.0)
         starIcon.position = CGPoint(x: -bannerW * 0.38, y: 0)
         toastNode.addChild(starIcon)

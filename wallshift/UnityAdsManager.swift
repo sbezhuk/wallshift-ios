@@ -151,10 +151,32 @@ final class UnityAdsManager: NSObject {
             isAdShowing = true
             UnityAds.show(viewController, placementId: interstitialPlacementId, showDelegate: self)
         } else {
+            #if targetEnvironment(simulator)
+            print("[UnityAdsManager] Running in Simulator: presenting simulated interstitial ad dialog")
+            showSimulatorInterstitialAlert(from: viewController)
+            #else
             loadInterstitialAd()
             onFailed?("Interstitial ad is not ready yet")
+            #endif
         }
     }
+    
+    #if targetEnvironment(simulator)
+    private func showSimulatorInterstitialAlert(from viewController: UIViewController) {
+        let alert = UIAlertController(
+            title: "Unity Ads (Simulator)",
+            message: "Simulating Interstitial Ad playback.\nPress 'Close Ad' to return to game.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Close Ad", style: .default, handler: { [weak self] _ in
+            self?.isAdShowing = false
+            self?.onAdSuccess?()
+            self?.onAdSuccess = nil
+            self?.onAdFailure = nil
+        }))
+        viewController.present(alert, animated: true)
+    }
+    #endif
     
     #if targetEnvironment(simulator)
     private func showSimulatorAdAlert(
@@ -234,7 +256,7 @@ extension UnityAdsManager: UnityAdsShowDelegate {
         }
         
         DispatchQueue.main.async { [weak self] in
-            if state == .showCompletionStateCompleted {
+            if state == .showCompletionStateCompleted || placementId == self?.interstitialPlacementId {
                 self?.onAdSuccess?()
             } else {
                 self?.onAdFailure?("Ad was skipped before completion")
@@ -247,8 +269,13 @@ extension UnityAdsManager: UnityAdsShowDelegate {
     func unityAdsShowFailed(_ placementId: String, withError error: UnityAdsShowError, withMessage message: String) {
         print("[UnityAdsManager] Ad show failed for \(placementId): \(error) - \(message)")
         isAdShowing = false
-        isRewardedAdLoaded = false
-        loadRewardedAd()
+        if placementId == interstitialPlacementId {
+            isInterstitialAdLoaded = false
+            loadInterstitialAd()
+        } else if placementId == rewardedPlacementId {
+            isRewardedAdLoaded = false
+            loadRewardedAd()
+        }
         
         DispatchQueue.main.async { [weak self] in
             #if targetEnvironment(simulator)

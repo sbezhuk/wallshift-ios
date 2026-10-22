@@ -112,6 +112,20 @@ struct wallshiftTests {
         #expect(guiCoinNames.count == themes.count)
     }
 
+    @Test func testThemeStarsConfiguration() async throws {
+        let themes = ThemeManager.shared.themes
+        #expect(!themes.isEmpty)
+        
+        var guiStarNames = Set<String>()
+        for theme in themes {
+            #expect(!theme.guiStarIconName.isEmpty)
+            guiStarNames.insert(theme.guiStarIconName)
+        }
+        
+        // У кожної теми мають бути свої унікальні іконки зірочок
+        #expect(guiStarNames.count == themes.count)
+    }
+
     @Test func testAchievementsCatalogAndTiers() async throws {
         let achievements = AchievementManager.shared.achievements
         
@@ -199,5 +213,58 @@ struct wallshiftTests {
         
         #expect(endRuns == startRuns + 1)
         #expect(endLifetime == startLifetime + 450)
+    }
+
+    @Test func testDynamicAdManagerLifecycleAndProtection() async throws {
+        let adManager = DynamicAdManager.shared
+        adManager.resetForTesting()
+        
+        // 1. FTUE: перші 3 спроби новачка не повинні викликати рекламу взагалі
+        adManager.notifyRunStarted()
+        adManager.notifyRunCompleted(duration: 25.0, score: 50, isNewHighScore: false)
+        #expect(adManager.isEligibleForInterstitial(isNewHighScore: false) == false)
+        
+        adManager.notifyRunStarted()
+        adManager.notifyRunCompleted(duration: 25.0, score: 50, isNewHighScore: false)
+        #expect(adManager.isEligibleForInterstitial(isNewHighScore: false) == false)
+        
+        adManager.notifyRunStarted()
+        adManager.notifyRunCompleted(duration: 25.0, score: 50, isNewHighScore: false)
+        #expect(adManager.isEligibleForInterstitial(isNewHighScore: false) == false)
+        
+        // 2. Симулюємо досвідченого гравця (>3 runs) з давнім кулдауном
+        let oldTimestamp = Date().timeIntervalSince1970 - 120.0 // 2 хвилини тому
+        adManager.simulateStateForTesting(pendingAttempts: 3, lifetimeRuns: 10, lastAdTimestamp: oldTimestamp)
+        
+        // До 4-ї спроби реклами ще немає
+        #expect(adManager.isEligibleForInterstitial(isNewHighScore: false) == false)
+        
+        // 3. Звичайна 4-та спроба (+1) досягає порогу 4
+        adManager.notifyRunStarted()
+        adManager.notifyRunCompleted(duration: 25.0, score: 60, isNewHighScore: false)
+        #expect(adManager.pendingAttempts >= 4)
+        #expect(adManager.isEligibleForInterstitial(isNewHighScore: false) == true)
+        
+        // 4. Якщо встановлено High Score — реклама блокується
+        #expect(adManager.isEligibleForInterstitial(isNewHighScore: true) == false)
+        
+        // 5. Якщо гравець подивився Rewarded Ad (Revive / Coins) — спроби скидаються на 0
+        adManager.notifyRewardedAdWatched()
+        #expect(adManager.pendingAttempts == 0)
+        #expect(adManager.isEligibleForInterstitial(isNewHighScore: false) == false)
+        
+        // 6. Marathon Run: довгий забіг (>55с) додає +2 спроби
+        adManager.simulateStateForTesting(pendingAttempts: 2, lifetimeRuns: 10, lastAdTimestamp: oldTimestamp)
+        adManager.notifyRunStarted()
+        adManager.notifyRunCompleted(duration: 65.0, score: 140, isNewHighScore: false)
+        #expect(adManager.pendingAttempts == 4)
+        #expect(adManager.isEligibleForInterstitial(isNewHighScore: false) == true)
+        
+        // 7. Cooldown захист: якщо минуло лише 10 секунд після показу — блокується
+        let recentTimestamp = Date().timeIntervalSince1970 - 10.0
+        adManager.simulateStateForTesting(pendingAttempts: 5, lifetimeRuns: 10, lastAdTimestamp: recentTimestamp)
+        #expect(adManager.isEligibleForInterstitial(isNewHighScore: false) == false)
+        
+        adManager.resetForTesting()
     }
 }

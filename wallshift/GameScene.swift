@@ -452,6 +452,12 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         get { UserDefaults.standard.integer(forKey: "BestWallShiftScore") }
         set { UserDefaults.standard.set(newValue, forKey: "BestWallShiftScore") }
     }
+    
+    // MARK: - Dynamic Ad Tracking
+    private var runStartTime: TimeInterval = 0
+    private var isNewHighScoreThisRun: Bool = false
+    private var isTransitioningScene: Bool = false
+    
     private var startCameraY: CGFloat = 0
     private var scoreLabel = SKLabelNode()
     private var lastLevelCelebrated: Int = 0
@@ -702,6 +708,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         } else {
             gameState = .playing
             isGameOver = false
+            runStartTime = CACurrentMediaTime()
+            DynamicAdManager.shared.notifyRunStarted()
             AchievementManager.shared.startNewRun()
             runJumpsCount = 0
             tookDamageThisRun = false
@@ -1027,7 +1035,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         card.zPosition = 5
         container.addChild(card)
         
-        let starIcon = SKSpriteNode(imageNamed: "gui_icon_star")
+        let starIcon = SKSpriteNode(imageNamed: currentTheme.guiStarIconName)
+        starIcon.name = "menuStarIcon"
         starIcon.size = CGSize(width: 22.0, height: 22.0)
         starIcon.position = CGPoint(x: -cardW * 0.36, y: 0.0)
         starIcon.zPosition = 2
@@ -1156,8 +1165,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         achBtn.zPosition = 10
         container.addChild(achBtn)
         
-        let achIcon = SKSpriteNode(imageNamed: "gui_icon_star")
-        achIcon.name = "menuAchievementsButton"
+        let achIcon = SKSpriteNode(imageNamed: currentTheme.guiStarIconName)
+        achIcon.name = "menuAchievementsStarIcon"
         achIcon.size = CGSize(width: 24.0, height: 24.0)
         achIcon.position = .zero
         achIcon.zPosition = 2
@@ -2013,11 +2022,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                 (card.childNode(withName: "menuBestScoreText") as? SKLabelNode)?.fontColor = theme.guiStatsTextColor
                 (card.childNode(withName: "menuCoinsText") as? SKLabelNode)?.fontColor = theme.guiStatsTextColor
                 (card.childNode(withName: "menuCoinsIcon") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCoinIconName)
+                (card.childNode(withName: "menuStarIcon") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiStarIconName)
             }
             (menu.childNode(withName: "menuPlayButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiPrimaryBtnName)
             (menu.childNode(withName: "menuShopButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiSecondaryBtnName)
             (menu.childNode(withName: "menuSoundButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
-            (menu.childNode(withName: "menuAchievementsButton") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
+            if let achBtn = menu.childNode(withName: "menuAchievementsButton") as? SKSpriteNode {
+                achBtn.texture = SKTexture(imageNamed: theme.guiCircleBtnName)
+                (achBtn.childNode(withName: "menuAchievementsStarIcon") as? SKSpriteNode)?.texture = SKTexture(imageNamed: theme.guiStarIconName)
+            }
         }
         
         // 5. Оновлення елементів інтерфейсу магазину (якщо відкритий)
@@ -2083,6 +2096,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // Починається підйом камери та ігровий процес
         gameState = .playing
+        runStartTime = CACurrentMediaTime()
+        DynamicAdManager.shared.notifyRunStarted()
         lastUpdateTime = 0
         
         // Скидання статистики поточного забігу для досягнень
@@ -3219,7 +3234,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                     showShopOverlay()
                     return
                 }
-                if name == "menuAchievementsButton" {
+                if name == "menuAchievementsButton" || name == "menuAchievementsStarIcon" {
                     playJumpSound()
                     showAchievementsOverlay()
                     return
@@ -3254,11 +3269,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                     return
                 }
                 if node.name == "menuButton" || node.parent?.name == "menuButton" {
-                    goToMainMenu()
+                    handleGameOverMenuTapped()
                     return
                 }
                 if node.name == "retryButton" || node.parent?.name == "retryButton" {
-                    restartGame()
+                    handleGameOverRetryTapped()
                     return
                 }
             }
@@ -3281,6 +3296,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         if player.isJumping {
             hasBufferedJump = true
             bufferedJumpTimestamp = CACurrentMediaTime()
+            return
+        }
+        
+        // Якщо гравець знаходиться над прірвою — він не має твердої опори під ногами
+        // і не може від неї відштовхнутися для стрибка (скидаємо буфер та зараховуємо потрапляння в прірву)
+        if let abyss = checkAbyssUnderPlayer() {
+            hasBufferedJump = false
+            handleAbyssHit(abyss: abyss)
             return
         }
         
@@ -3316,7 +3339,21 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             } else if self.gameState == .playing {
                 self.player.startRunningAnimation()
                 
-                // Перевіряємо наявність тапу в буфері введення (Input Buffer)
+                // 1. Перевіряємо потрапляння у прірву при приземленні:
+                // Якщо герой приземлився у розрив стіни (прірву) — відштовхнутися від неї неможливо!
+                // Скидаємо буфер стрибка, зараховуємо шкоду (-1 життя) та запускаємо відновлення.
+                if let abyss = self.checkAbyssUnderPlayer() {
+                    self.hasBufferedJump = false
+                    self.handleAbyssHit(abyss: abyss)
+                    return
+                }
+                
+                // 2. Перевіряємо приземлення або безпосереднє падіння на голову моба при завершенні стрибка
+                if let mob = self.checkMobUnderPlayer() {
+                    self.handleMobHit(mob: mob)
+                }
+                
+                // 3. Перевіряємо наявність тапу в буфері введення (Input Buffer)
                 let now = CACurrentMediaTime()
                 if self.hasBufferedJump && (now - self.bufferedJumpTimestamp <= self.jumpBufferWindow) {
                     self.hasBufferedJump = false
@@ -3414,6 +3451,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                     handleAbyssHit(abyss: abyss)
                 }
             }
+            
+            // Якщо гравець безпосередньо падає на голову мобу або стикається з ним — зараховується удар гравця
+            if let mob = checkMobUnderPlayer() {
+                handleMobHit(mob: mob)
+            }
         }
         
         // Безперервне поповнення доріжки наперед та очищення старих тайлів позаду
@@ -3457,10 +3499,33 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let playerY = player.position.y
         for abyss in abyssNodes {
             let halfH = abyss.gapHeight / 2.0
-            let minY = abyss.position.y - halfH + 4.0
-            let maxY = abyss.position.y + halfH - 4.0
+            let minY = abyss.position.y - halfH
+            let maxY = abyss.position.y + halfH
             if playerY >= minY && playerY <= maxY {
                 return abyss
+            }
+        }
+        return nil
+    }
+    
+    /// Перевіряє, чи знаходиться гравець у зоні прямого зіткнення / безпосереднього падіння на голову моба
+    private func checkMobUnderPlayer() -> MobNode? {
+        guard !player.isInvulnerable, !isGameOver, !isPlayerFalling else { return nil }
+        
+        let pPos = player.position
+        let pHalfW: CGFloat = max(PlayerNode.Constants.hitboxSize.width, PlayerNode.Constants.hitboxSize.height) * 0.5
+        let pHalfH: CGFloat = max(PlayerNode.Constants.hitboxSize.width, PlayerNode.Constants.hitboxSize.height) * 0.5
+        let playerRect = CGRect(x: pPos.x - pHalfW, y: pPos.y - pHalfH, width: pHalfW * 2.0, height: pHalfH * 2.0)
+        
+        for mob in trackMobNodes {
+            guard mob.parent != nil else { continue }
+            let mPos = mob.position
+            let mHalfW: CGFloat = max(MobNode.Constants.hitboxSize.width, MobNode.Constants.hitboxSize.height) * 0.5
+            let mHalfH: CGFloat = max(MobNode.Constants.hitboxSize.width, MobNode.Constants.hitboxSize.height) * 0.5
+            let mobRect = CGRect(x: mPos.x - mHalfW, y: mPos.y - mHalfH, width: mHalfW * 2.0, height: mHalfH * 2.0)
+            
+            if playerRect.intersects(mobRect) {
+                return mob
             }
         }
         return nil
@@ -3518,8 +3583,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             guard !player.isInvulnerable else { return }
             let otherNode = contact.bodyA.categoryBitMask == PhysicsCategory.obstacle ? contact.bodyA.node : contact.bodyB.node
             if let mobNode = otherNode as? MobNode {
-                // Моб на іншій стіні не може вразити гравця, якщо той у повітрі або на протилежній стороні
-                guard !player.isJumping || mobNode.isOnLeftWall == player.isOnLeftWall else { return }
+                // При прямому зіткненні або падінні на голову моба це зараховується як удар гравця (-1 життя)
                 handleMobHit(mob: mobNode)
             } else if let arrowNode = otherNode as? FireArrowNode {
                 handleArrowHit(arrow: arrowNode)
@@ -3575,7 +3639,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         let safeTargetX = safeWallIsLeft ? playerLeftX : playerRightX
         
         // Плавний акробатичний стрибок-відскок на протилежну гарантовано суцільну стіну
-        player.rebound(to: safeTargetX, onLeftWall: safeWallIsLeft, duration: 0.22)
+        player.rebound(to: safeTargetX, onLeftWall: safeWallIsLeft, duration: 0.22) { [weak self] in
+            self?.hasBufferedJump = false
+        }
         
         // Вмикаємо 3 секунди невразливості з морганням
         player.startInvulnerability(duration: 3.0)
@@ -3729,6 +3795,15 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         isGameOver = true
         gameState = .gameOver
         
+        // Розрахунок тривалості забігу та перевірка нового рекорду для розумної реклами
+        let runDuration = runStartTime > 0 ? max(0, CACurrentMediaTime() - runStartTime) : 0
+        isNewHighScoreThisRun = (score > bestScore && score > 0)
+        DynamicAdManager.shared.notifyRunCompleted(
+            duration: runDuration,
+            score: score,
+            isNewHighScore: isNewHighScoreThisRun
+        )
+        
         // Фінальна перевірка досягнень за сесію та довгострокової статистики
         AchievementManager.shared.trackRunProgress(
             score: score,
@@ -3822,7 +3897,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         statsBar.zPosition = 3
         dialogCard.addChild(statsBar)
         
-        let star = SKSpriteNode(imageNamed: "gui_icon_star")
+        let star = SKSpriteNode(imageNamed: currentTheme.guiStarIconName)
+        star.name = "gameOverStarIcon"
         star.size = CGSize(width: 20.0, height: 20.0)
         star.position = CGPoint(x: -statsW * 0.38, y: 12.0)
         star.zPosition = 4
@@ -3991,6 +4067,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         UnityAdsManager.shared.showRewardedAd(from: vc) { [weak self] in
             guard let self = self else { return }
+            DynamicAdManager.shared.notifyRewardedAdWatched()
             self.hasUsedAdRevive = true
             self.revivePlayerWithOneHeart()
         } onFailed: { message in
@@ -4015,6 +4092,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private func doubleCollectedCoins() {
         guard !hasUsedAdDoubleCoins, coinsCollected > 0 else { return }
         hasUsedAdDoubleCoins = true
+        DynamicAdManager.shared.notifyRewardedAdWatched()
         
         // Додаємо бонусні монети до загального балансу
         let bonus = coinsCollected
@@ -4181,6 +4259,38 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // 10. Візуальний ефект відновлення серця та фонова музика
         playHeartPickupEffect(at: safePos)
         startBGM(lowVolume: false)
+    }
+    
+    // MARK: - Game Over Actions with Dynamic Interstitial
+    
+    private func handleGameOverRetryTapped() {
+        guard !isTransitioningScene else { return }
+        isTransitioningScene = true
+        playJumpSound()
+        
+        guard let vc = view?.window?.rootViewController ?? view?.next as? UIViewController else {
+            restartGame()
+            return
+        }
+        
+        DynamicAdManager.shared.showInterstitialIfEligible(from: vc, isNewHighScore: isNewHighScoreThisRun) { [weak self] in
+            self?.restartGame()
+        }
+    }
+    
+    private func handleGameOverMenuTapped() {
+        guard !isTransitioningScene else { return }
+        isTransitioningScene = true
+        playJumpSound()
+        
+        guard let vc = view?.window?.rootViewController ?? view?.next as? UIViewController else {
+            goToMainMenu()
+            return
+        }
+        
+        DynamicAdManager.shared.showInterstitialIfEligible(from: vc, isNewHighScore: isNewHighScoreThisRun) { [weak self] in
+            self?.goToMainMenu()
+        }
     }
     
     private func restartGame() {
