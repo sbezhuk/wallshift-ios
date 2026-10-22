@@ -13,7 +13,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Попередній запуск та прогрів аудіосистеми до запуску першої сцени
+        DispatchQueue.global(qos: .userInitiated).async {
+            GameAudio.shared.setupIfNeeded()
+        }
         return true
     }
 
