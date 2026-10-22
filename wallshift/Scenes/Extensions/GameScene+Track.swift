@@ -1048,8 +1048,20 @@ extension GameScene {
             decorationNodes.removeFirst(removeDecoCount)
         }
         
-        leftAbyssNodes.removeAll { $0.position.y < screenBottom || $0.parent == nil }
-        rightAbyssNodes.removeAll { $0.position.y < screenBottom || $0.parent == nil }
+        leftAbyssNodes.removeAll { node in
+            if node.position.y < screenBottom || node.parent == nil {
+                node.removeFromParent()
+                return true
+            }
+            return false
+        }
+        rightAbyssNodes.removeAll { node in
+            if node.position.y < screenBottom || node.parent == nil {
+                node.removeFromParent()
+                return true
+            }
+            return false
+        }
         
         trackHeartNodes.removeAll { node in
             if node.position.y < screenBottom || node.parent == nil {

@@ -304,9 +304,15 @@ final class GameScene: SKScene {
     let hudNode = SKNode()
     
     var score: Int = 0
+    private static var cachedBestScore: Int = UserDefaults.standard.integer(forKey: "BestWallShiftScore")
     var bestScore: Int {
-        get { UserDefaults.standard.integer(forKey: "BestWallShiftScore") }
-        set { UserDefaults.standard.set(newValue, forKey: "BestWallShiftScore") }
+        get { GameScene.cachedBestScore }
+        set {
+            GameScene.cachedBestScore = newValue
+            DispatchQueue.global(qos: .utility).async {
+                UserDefaults.standard.set(newValue, forKey: "BestWallShiftScore")
+            }
+        }
     }
     
     // MARK: - Dynamic Ad Tracking
@@ -321,8 +327,8 @@ final class GameScene: SKScene {
     // MARK: - Coins System
     var coinsCollected: Int = 0
     var totalCoins: Int {
-        get { UserDefaults.standard.integer(forKey: "TotalWallShiftCoins") }
-        set { UserDefaults.standard.set(newValue, forKey: "TotalWallShiftCoins") }
+        get { ThemeManager.shared.totalCoins }
+        set { ThemeManager.shared.totalCoins = newValue }
     }
     var coinsLabel = SKLabelNode()
     var hudCoinIcon: SKSpriteNode?

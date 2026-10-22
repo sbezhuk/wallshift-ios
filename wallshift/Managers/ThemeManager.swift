@@ -289,9 +289,17 @@ final class ThemeManager {
         return theme(for: selectedThemeID) ?? themes[0]
     }
     
+    private var cachedTotalCoins: Int = UserDefaults.standard.integer(forKey: "TotalWallShiftCoins")
+    
     var totalCoins: Int {
-        get { UserDefaults.standard.integer(forKey: totalCoinsKey) }
-        set { UserDefaults.standard.set(newValue, forKey: totalCoinsKey) }
+        get { cachedTotalCoins }
+        set {
+            cachedTotalCoins = newValue
+            let key = self.totalCoinsKey
+            DispatchQueue.global(qos: .utility).async {
+                UserDefaults.standard.set(newValue, forKey: key)
+            }
+        }
     }
     
     // MARK: - Initialization

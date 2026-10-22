@@ -31,37 +31,43 @@ final class GameAudio {
     /// Прапорець, що сигналізує про активний показ реклами
     private(set) var isAdActive: Bool = false
     
+    // In-memory кеш налаштувань звуку (0 звернень до UserDefaults під час гри)
+    private var cachedIsMuted: Bool = UserDefaults.standard.bool(forKey: "WallShiftMuted")
+    private var cachedBGMVolume: Float = UserDefaults.standard.object(forKey: "WallShiftBGMVolume") == nil ? 1.0 : UserDefaults.standard.float(forKey: "WallShiftBGMVolume")
+    private var cachedSFXVolume: Float = UserDefaults.standard.object(forKey: "WallShiftSFXVolume") == nil ? 1.0 : UserDefaults.standard.float(forKey: "WallShiftSFXVolume")
+    
     var isMuted: Bool {
-        get { UserDefaults.standard.bool(forKey: "WallShiftMuted") }
-        set { UserDefaults.standard.set(newValue, forKey: "WallShiftMuted") }
+        get { cachedIsMuted }
+        set {
+            cachedIsMuted = newValue
+            DispatchQueue.global(qos: .utility).async {
+                UserDefaults.standard.set(newValue, forKey: "WallShiftMuted")
+            }
+        }
     }
     
     /// Гучність фонової музики: 0.0 ... 1.0 (за замовчуванням 1.0)
     var bgmVolume: Float {
-        get {
-            if UserDefaults.standard.object(forKey: "WallShiftBGMVolume") == nil {
-                return 1.0
-            }
-            return UserDefaults.standard.float(forKey: "WallShiftBGMVolume")
-        }
+        get { cachedBGMVolume }
         set {
             let clamped = max(0.0, min(1.0, newValue))
-            UserDefaults.standard.set(clamped, forKey: "WallShiftBGMVolume")
+            cachedBGMVolume = clamped
+            DispatchQueue.global(qos: .utility).async {
+                UserDefaults.standard.set(clamped, forKey: "WallShiftBGMVolume")
+            }
             applyBGMVolume()
         }
     }
     
     /// Гучність звукових ефектів (стрибок, монетки, game over): 0.0 ... 1.0 (за замовчуванням 1.0)
     var sfxVolume: Float {
-        get {
-            if UserDefaults.standard.object(forKey: "WallShiftSFXVolume") == nil {
-                return 1.0
-            }
-            return UserDefaults.standard.float(forKey: "WallShiftSFXVolume")
-        }
+        get { cachedSFXVolume }
         set {
             let clamped = max(0.0, min(1.0, newValue))
-            UserDefaults.standard.set(clamped, forKey: "WallShiftSFXVolume")
+            cachedSFXVolume = clamped
+            DispatchQueue.global(qos: .utility).async {
+                UserDefaults.standard.set(clamped, forKey: "WallShiftSFXVolume")
+            }
             applySFXVolume()
         }
     }
@@ -75,8 +81,14 @@ final class GameAudio {
     private var coinBuffer: AVAudioPCMBuffer?
     private var gameOverBuffer: AVAudioPCMBuffer?
     
+    // Пул із 2 нод для стрибків (усуває збої при швидких послідовних тапах/буферизації)
+    private let jumpNodes: [AVAudioPlayerNode] = [
+        AVAudioPlayerNode(),
+        AVAudioPlayerNode()
+    ]
+    private var currentJumpNodeIndex: Int = 0
+    
     // Ноди відтворення звукових ефектів
-    private let jumpNode = AVAudioPlayerNode()
     private let gameOverNode = AVAudioPlayerNode()
     
     // Пул із 4 нод для монет (швидкий збір кількох монет поспіль без обриву)
@@ -129,9 +141,11 @@ final class GameAudio {
     }
     
     private func setupAudioEngine() {
-        // Підключаємо ноду стрибка
-        engine.attach(jumpNode)
-        connectNode(jumpNode, format: jumpBuffer?.format)
+        // Підключаємо пул нод стрибків
+        for node in jumpNodes {
+            engine.attach(node)
+            connectNode(node, format: jumpBuffer?.format)
+        }
         
         // Підключаємо пул нод монет
         for node in coinNodes {
@@ -269,7 +283,9 @@ final class GameAudio {
     
     private func applySFXVolumeInternal() {
         let eff = isMuted ? 0.0 : sfxVolume
-        jumpNode.volume = GameAudio.jumpVolume * eff
+        for node in jumpNodes {
+            node.volume = GameAudio.jumpVolume * eff
+        }
         for node in coinNodes {
             node.volume = GameAudio.coinVolume * eff
         }
@@ -307,17 +323,19 @@ final class GameAudio {
     
     // MARK: - Звукові ефекти (SFX)
     
-    /// Відтворення звуку стрибка героя (асинхронно у виділеній черзі, 0ms затримка, нуль блокувань головного потоку)
+    /// Відтворення звуку стрибка героя (асинхронно у виділеній черзі, 0ms затримка, пул із 2 нод без кліків)
     func playJump() {
         guard !isMuted, sfxVolume > 0.001 else { return }
         audioQueue.async { [weak self] in
             guard let self = self, !self.isMuted, self.sfxVolume > 0.001, let buffer = self.jumpBuffer else { return }
             self.ensureEngineRunning()
-            if self.jumpNode.isPlaying {
-                self.jumpNode.stop()
+            let node = self.jumpNodes[self.currentJumpNodeIndex]
+            self.currentJumpNodeIndex = (self.currentJumpNodeIndex + 1) % self.jumpNodes.count
+            if node.isPlaying {
+                node.stop()
             }
-            self.jumpNode.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
-            self.playNode(self.jumpNode)
+            node.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
+            self.playNode(node)
         }
     }
     
@@ -436,7 +454,7 @@ final class GameAudio {
             pauseBGM()
             audioQueue.async { [weak self] in
                 guard let self = self else { return }
-                self.jumpNode.stop()
+                self.jumpNodes.forEach { $0.stop() }
                 self.coinNodes.forEach { $0.stop() }
                 self.gameOverNode.stop()
                 self.applySFXVolumeInternal()

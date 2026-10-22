@@ -47,6 +47,27 @@ final class AchievementManager {
     private(set) var activeWeeklyIDs: [String] = []
     private(set) var cycleStartDate: Date = Date()
     
+    // Кешований список 12 активних досягнень поточного тижня (нуль лінійних пошуків по 100 елементах під час гри)
+    private var cachedActiveAchievements: [Achievement] = []
+    
+    // In-memory кеш метрик та рекордів поточного тижня (0 викликів UserDefaults під час забігу, 120 FPS buttery smooth)
+    private var weeklyScore: Int = 0
+    private var weeklyCoins: Int = 0
+    private var weeklyJumps: Int = 0
+    private var weeklyDodgedArrows: Int = 0
+    private var weeklyHearts: Int = 0
+    private var weeklyRuns: Int = 0
+    
+    private var weeklyBestScore: Int = 0
+    private var weeklyBestCoins: Int = 0
+    private var weeklyBestJumps: Int = 0
+    private var weeklyBestDodged: Int = 0
+    private var weeklyBestHearts: Int = 0
+    private var weeklyBestNoDamage: Int = 0
+    private var weeklyBestNoAbyss: Int = 0
+    private var weeklyBestNoRevive: Int = 0
+    private var weeklyBestClutch: Int = 0
+    
     /// Тимчасова статистика поточного забігу
     private var currentRunDodgedArrows: Int = 0
     private var currentRunHearts: Int = 0
@@ -59,7 +80,11 @@ final class AchievementManager {
     
     // MARK: - Поточні 12 активних досягнень тижня
     var achievements: [Achievement] {
-        return activeWeeklyIDs.compactMap { id in
+        return cachedActiveAchievements
+    }
+    
+    private func updateCachedAchievements() {
+        cachedActiveAchievements = activeWeeklyIDs.compactMap { id in
             Self.allCatalogAchievements.first(where: { $0.id == id })
         }
     }
@@ -91,25 +116,23 @@ final class AchievementManager {
         claimedIDs.removeAll()
         newlyUnlockedThisRun.removeAll()
         
-        // Скидання накопиченої статистики та тижневих рекордів
-        let defaults = UserDefaults.standard
-        defaults.removeObject(forKey: unlockedKey)
-        defaults.removeObject(forKey: claimedKey)
-        defaults.removeObject(forKey: weeklyScoreKey)
-        defaults.removeObject(forKey: weeklyCoinsKey)
-        defaults.removeObject(forKey: weeklyJumpsKey)
-        defaults.removeObject(forKey: weeklyDodgedArrowsKey)
-        defaults.removeObject(forKey: weeklyHeartsKey)
-        defaults.removeObject(forKey: weeklyRunsKey)
-        defaults.removeObject(forKey: weeklyBestScoreKey)
-        defaults.removeObject(forKey: weeklyBestCoinsKey)
-        defaults.removeObject(forKey: weeklyBestJumpsKey)
-        defaults.removeObject(forKey: weeklyBestDodgedKey)
-        defaults.removeObject(forKey: weeklyBestHeartsKey)
-        defaults.removeObject(forKey: weeklyBestNoDamageKey)
-        defaults.removeObject(forKey: weeklyBestNoAbyssKey)
-        defaults.removeObject(forKey: weeklyBestNoReviveKey)
-        defaults.removeObject(forKey: weeklyBestClutchKey)
+        // Скидання in-memory накопиченої статистики та тижневих рекордів
+        weeklyScore = 0
+        weeklyCoins = 0
+        weeklyJumps = 0
+        weeklyDodgedArrows = 0
+        weeklyHearts = 0
+        weeklyRuns = 0
+        
+        weeklyBestScore = 0
+        weeklyBestCoins = 0
+        weeklyBestJumps = 0
+        weeklyBestDodged = 0
+        weeklyBestHearts = 0
+        weeklyBestNoDamage = 0
+        weeklyBestNoAbyss = 0
+        weeklyBestNoRevive = 0
+        weeklyBestClutch = 0
         
         // Вибираємо 12 нових рандомних досягнень із каталогу зі 100 шт:
         // Баланс складності: 5 Easy, 4 Medium, 3 Hard = 12 шт на тиждень
@@ -130,10 +153,35 @@ final class AchievementManager {
         }
         
         activeWeeklyIDs = selected.map { $0.id }
+        updateCachedAchievements()
         
-        defaults.set(activeWeeklyIDs, forKey: activeWeeklyIDsKey)
-        defaults.set(cycleStartDate.timeIntervalSince1970, forKey: cycleStartDateKey)
-        defaults.synchronize()
+        // Очищення та запис у UserDefaults у фоновому потоці
+        let activeIDs = activeWeeklyIDs
+        let startTs = cycleStartDate.timeIntervalSince1970
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self = self else { return }
+            let defaults = UserDefaults.standard
+            defaults.removeObject(forKey: self.unlockedKey)
+            defaults.removeObject(forKey: self.claimedKey)
+            defaults.removeObject(forKey: self.weeklyScoreKey)
+            defaults.removeObject(forKey: self.weeklyCoinsKey)
+            defaults.removeObject(forKey: self.weeklyJumpsKey)
+            defaults.removeObject(forKey: self.weeklyDodgedArrowsKey)
+            defaults.removeObject(forKey: self.weeklyHeartsKey)
+            defaults.removeObject(forKey: self.weeklyRunsKey)
+            defaults.removeObject(forKey: self.weeklyBestScoreKey)
+            defaults.removeObject(forKey: self.weeklyBestCoinsKey)
+            defaults.removeObject(forKey: self.weeklyBestJumpsKey)
+            defaults.removeObject(forKey: self.weeklyBestDodgedKey)
+            defaults.removeObject(forKey: self.weeklyBestHeartsKey)
+            defaults.removeObject(forKey: self.weeklyBestNoDamageKey)
+            defaults.removeObject(forKey: self.weeklyBestNoAbyssKey)
+            defaults.removeObject(forKey: self.weeklyBestNoReviveKey)
+            defaults.removeObject(forKey: self.weeklyBestClutchKey)
+            
+            defaults.set(activeIDs, forKey: self.activeWeeklyIDsKey)
+            defaults.set(startTs, forKey: self.cycleStartDateKey)
+        }
     }
     
     /// Час, що залишився до наступного щотижневого скидання (у секундах)
@@ -172,6 +220,7 @@ final class AchievementManager {
         if let savedActiveIDs = defaults.stringArray(forKey: activeWeeklyIDsKey), !savedActiveIDs.isEmpty {
             activeWeeklyIDs = savedActiveIDs
         }
+        updateCachedAchievements()
         
         let startTimestamp = defaults.double(forKey: cycleStartDateKey)
         if startTimestamp > 0 {
@@ -180,14 +229,80 @@ final class AchievementManager {
             cycleStartDate = Date()
             defaults.set(cycleStartDate.timeIntervalSince1970, forKey: cycleStartDateKey)
         }
+        
+        // Завантаження метрик у пам'ять
+        weeklyScore = defaults.integer(forKey: weeklyScoreKey)
+        weeklyCoins = defaults.integer(forKey: weeklyCoinsKey)
+        weeklyJumps = defaults.integer(forKey: weeklyJumpsKey)
+        weeklyDodgedArrows = defaults.integer(forKey: weeklyDodgedArrowsKey)
+        weeklyHearts = defaults.integer(forKey: weeklyHeartsKey)
+        weeklyRuns = defaults.integer(forKey: weeklyRunsKey)
+        
+        weeklyBestScore = defaults.integer(forKey: weeklyBestScoreKey)
+        weeklyBestCoins = defaults.integer(forKey: weeklyBestCoinsKey)
+        weeklyBestJumps = defaults.integer(forKey: weeklyBestJumpsKey)
+        weeklyBestDodged = defaults.integer(forKey: weeklyBestDodgedKey)
+        weeklyBestHearts = defaults.integer(forKey: weeklyBestHeartsKey)
+        weeklyBestNoDamage = defaults.integer(forKey: weeklyBestNoDamageKey)
+        weeklyBestNoAbyss = defaults.integer(forKey: weeklyBestNoAbyssKey)
+        weeklyBestNoRevive = defaults.integer(forKey: weeklyBestNoReviveKey)
+        weeklyBestClutch = defaults.integer(forKey: weeklyBestClutchKey)
     }
     
     private func saveUnlocked() {
-        UserDefaults.standard.set(Array(unlockedIDs), forKey: unlockedKey)
+        let ids = Array(unlockedIDs)
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self = self else { return }
+            UserDefaults.standard.set(ids, forKey: self.unlockedKey)
+        }
     }
     
     private func saveClaimed() {
-        UserDefaults.standard.set(Array(claimedIDs), forKey: claimedKey)
+        let ids = Array(claimedIDs)
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self = self else { return }
+            UserDefaults.standard.set(ids, forKey: self.claimedKey)
+        }
+    }
+    
+    private func saveWeeklyMetricsAsync() {
+        let bScore = weeklyBestScore
+        let bCoins = weeklyBestCoins
+        let bJumps = weeklyBestJumps
+        let bDodged = weeklyBestDodged
+        let bHearts = weeklyBestHearts
+        let bNoDmg = weeklyBestNoDamage
+        let bNoAbyss = weeklyBestNoAbyss
+        let bNoRev = weeklyBestNoRevive
+        let bClutch = weeklyBestClutch
+        
+        let tScore = weeklyScore
+        let tCoins = weeklyCoins
+        let tJumps = weeklyJumps
+        let tDodged = weeklyDodgedArrows
+        let tHearts = weeklyHearts
+        let tRuns = weeklyRuns
+        
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self = self else { return }
+            let defaults = UserDefaults.standard
+            defaults.set(bScore, forKey: self.weeklyBestScoreKey)
+            defaults.set(bCoins, forKey: self.weeklyBestCoinsKey)
+            defaults.set(bJumps, forKey: self.weeklyBestJumpsKey)
+            defaults.set(bDodged, forKey: self.weeklyBestDodgedKey)
+            defaults.set(bHearts, forKey: self.weeklyBestHeartsKey)
+            defaults.set(bNoDmg, forKey: self.weeklyBestNoDamageKey)
+            defaults.set(bNoAbyss, forKey: self.weeklyBestNoAbyssKey)
+            defaults.set(bNoRev, forKey: self.weeklyBestNoReviveKey)
+            defaults.set(bClutch, forKey: self.weeklyBestClutchKey)
+            
+            defaults.set(tScore, forKey: self.weeklyScoreKey)
+            defaults.set(tCoins, forKey: self.weeklyCoinsKey)
+            defaults.set(tJumps, forKey: self.weeklyJumpsKey)
+            defaults.set(tDodged, forKey: self.weeklyDodgedArrowsKey)
+            defaults.set(tHearts, forKey: self.weeklyHeartsKey)
+            defaults.set(tRuns, forKey: self.weeklyRunsKey)
+        }
     }
     
     // MARK: - Queries
@@ -204,51 +319,50 @@ final class AchievementManager {
             return ach.targetValue
         }
         
-        let defaults = UserDefaults.standard
         switch ach.metric {
         case .singleRunScore:
-            return defaults.integer(forKey: weeklyBestScoreKey)
+            return weeklyBestScore
         case .weeklyScore:
-            return defaults.integer(forKey: weeklyScoreKey)
+            return weeklyScore
         case .singleRunCoins:
-            return defaults.integer(forKey: weeklyBestCoinsKey)
+            return weeklyBestCoins
         case .weeklyCoins:
-            return defaults.integer(forKey: weeklyCoinsKey)
+            return weeklyCoins
         case .singleRunJumps:
-            return defaults.integer(forKey: weeklyBestJumpsKey)
+            return weeklyBestJumps
         case .weeklyJumps:
-            return defaults.integer(forKey: weeklyJumpsKey)
+            return weeklyJumps
         case .singleRunDodgedArrows:
-            return defaults.integer(forKey: weeklyBestDodgedKey)
+            return weeklyBestDodged
         case .weeklyDodgedArrows:
-            return defaults.integer(forKey: weeklyDodgedArrowsKey)
+            return weeklyDodgedArrows
         case .singleRunHearts:
-            return defaults.integer(forKey: weeklyBestHeartsKey)
+            return weeklyBestHearts
         case .weeklyHearts:
-            return defaults.integer(forKey: weeklyHeartsKey)
+            return weeklyHearts
         case .singleRunNoDamageScore:
-            return defaults.integer(forKey: weeklyBestNoDamageKey)
+            return weeklyBestNoDamage
         case .singleRunNoAbyssScore:
-            return defaults.integer(forKey: weeklyBestNoAbyssKey)
+            return weeklyBestNoAbyss
         case .singleRunNoReviveScore:
-            return defaults.integer(forKey: weeklyBestNoReviveKey)
+            return weeklyBestNoRevive
         case .singleRunClutchScore:
-            return defaults.integer(forKey: weeklyBestClutchKey)
+            return weeklyBestClutch
         case .weeklyRunsCount:
-            return defaults.integer(forKey: weeklyRunsKey)
+            return weeklyRuns
         }
     }
     
     var unlockedCount: Int {
-        return achievements.filter { isUnlocked(id: $0.id) }.count
+        return cachedActiveAchievements.filter { isUnlocked(id: $0.id) }.count
     }
     
     var totalAchievementsCount: Int {
-        return achievements.count // Завжди 12 у поточному тижні
+        return cachedActiveAchievements.count // Завжди 12 у поточному тижні
     }
     
     var hasUnclaimedRewards: Bool {
-        for ach in achievements {
+        for ach in cachedActiveAchievements {
             if isUnlocked(id: ach.id) && !isClaimed(id: ach.id) {
                 return true
             }
@@ -267,15 +381,13 @@ final class AchievementManager {
     // MARK: - Unlocking & Claiming
     func unlock(id: String) {
         guard !unlockedIDs.contains(id) else { return }
-        guard let ach = achievements.first(where: { $0.id == id }) else { return }
+        guard let ach = cachedActiveAchievements.first(where: { $0.id == id }) else { return }
         
         unlockedIDs.insert(id)
         newlyUnlockedThisRun.append(ach)
         saveUnlocked()
         
-        DispatchQueue.main.async { [weak self] in
-            self?.onAchievementUnlocked?(ach)
-        }
+        onAchievementUnlocked?(ach)
     }
     
     /// Забрати нагороду за досягнення. Повертає кількість отриманих монет.
@@ -285,16 +397,15 @@ final class AchievementManager {
         claimedIDs.insert(ach.id)
         saveClaimed()
         
-        // Додаємо монети на загальний баланс гравця
-        let currentTotal = UserDefaults.standard.integer(forKey: "TotalWallShiftCoins")
-        UserDefaults.standard.set(currentTotal + ach.coinReward, forKey: "TotalWallShiftCoins")
+        // Додаємо монети на загальний баланс гравця через кешований ThemeManager
+        ThemeManager.shared.totalCoins += ach.coinReward
         
         return ach.coinReward
     }
     
     // MARK: - Event Trackers
     
-    /// Оновлення прогресу під час забігу в реальному часі
+    /// Оновлення прогресу під час забігу в реальному часі (100% in-memory, 0 навантаження на головний потік)
     func trackRunProgress(
         score: Int,
         runJumps: Int,
@@ -304,130 +415,114 @@ final class AchievementManager {
         usedReviveThisRun: Bool,
         clutchScore: Int = 0
     ) {
-        checkAndPerformWeeklyResetIfNeeded()
-        let defaults = UserDefaults.standard
+        var hadNewBest = false
         
-        // 1. Оновлення тижневих рекордів забігу
-        let curBestScore = defaults.integer(forKey: weeklyBestScoreKey)
-        if score > curBestScore {
-            defaults.set(score, forKey: weeklyBestScoreKey)
+        if score > weeklyBestScore {
+            weeklyBestScore = score
+            hadNewBest = true
         }
         
-        let curBestCoins = defaults.integer(forKey: weeklyBestCoinsKey)
-        if runCoins > curBestCoins {
-            defaults.set(runCoins, forKey: weeklyBestCoinsKey)
+        if runCoins > weeklyBestCoins {
+            weeklyBestCoins = runCoins
+            hadNewBest = true
         }
         
-        let curBestJumps = defaults.integer(forKey: weeklyBestJumpsKey)
-        if runJumps > curBestJumps {
-            defaults.set(runJumps, forKey: weeklyBestJumpsKey)
+        if runJumps > weeklyBestJumps {
+            weeklyBestJumps = runJumps
+            hadNewBest = true
         }
         
-        let curBestDodged = defaults.integer(forKey: weeklyBestDodgedKey)
-        if currentRunDodgedArrows > curBestDodged {
-            defaults.set(currentRunDodgedArrows, forKey: weeklyBestDodgedKey)
+        if currentRunDodgedArrows > weeklyBestDodged {
+            weeklyBestDodged = currentRunDodgedArrows
+            hadNewBest = true
         }
         
-        let curBestHearts = defaults.integer(forKey: weeklyBestHeartsKey)
-        if currentRunHearts > curBestHearts {
-            defaults.set(currentRunHearts, forKey: weeklyBestHeartsKey)
+        if currentRunHearts > weeklyBestHearts {
+            weeklyBestHearts = currentRunHearts
+            hadNewBest = true
         }
         
-        if !tookDamageThisRun {
-            let bestNoDamage = defaults.integer(forKey: weeklyBestNoDamageKey)
-            if score > bestNoDamage {
-                defaults.set(score, forKey: weeklyBestNoDamageKey)
-            }
+        if !tookDamageThisRun && score > weeklyBestNoDamage {
+            weeklyBestNoDamage = score
+            hadNewBest = true
         }
         
-        if !fellIntoAbyssThisRun {
-            let bestNoAbyss = defaults.integer(forKey: weeklyBestNoAbyssKey)
-            if score > bestNoAbyss {
-                defaults.set(score, forKey: weeklyBestNoAbyssKey)
-            }
+        if !fellIntoAbyssThisRun && score > weeklyBestNoAbyss {
+            weeklyBestNoAbyss = score
+            hadNewBest = true
         }
         
-        if !usedReviveThisRun {
-            let bestNoRevive = defaults.integer(forKey: weeklyBestNoReviveKey)
-            if score > bestNoRevive {
-                defaults.set(score, forKey: weeklyBestNoReviveKey)
-            }
+        if !usedReviveThisRun && score > weeklyBestNoRevive {
+            weeklyBestNoRevive = score
+            hadNewBest = true
         }
         
-        if clutchScore > 0 {
-            let bestClutch = defaults.integer(forKey: weeklyBestClutchKey)
-            if clutchScore > bestClutch {
-                defaults.set(clutchScore, forKey: weeklyBestClutchKey)
-            }
+        if clutchScore > weeklyBestClutch {
+            weeklyBestClutch = clutchScore
+            hadNewBest = true
         }
         
-        // 2. Перевірка розблокування активних ачівок поточного тижня
-        evaluateActiveAchievements()
+        // 2. Перевірка розблокування тільки якщо був новий прогрес
+        if hadNewBest {
+            evaluateActiveAchievements()
+        }
     }
     
-    /// Оновлення при підборі серця гравцем
+    /// Оновлення при підборі серця гравцем (in-memory)
     func trackHeartCollected() {
         currentRunHearts += 1
         
-        let curBestHearts = UserDefaults.standard.integer(forKey: weeklyBestHeartsKey)
-        if currentRunHearts > curBestHearts {
-            UserDefaults.standard.set(currentRunHearts, forKey: weeklyBestHeartsKey)
+        if currentRunHearts > weeklyBestHearts {
+            weeklyBestHearts = currentRunHearts
         }
         
-        let totalHearts = UserDefaults.standard.integer(forKey: weeklyHeartsKey) + 1
-        UserDefaults.standard.set(totalHearts, forKey: weeklyHeartsKey)
-        
+        weeklyHearts += 1
         evaluateActiveAchievements()
     }
     
-    /// Трекінг ухилення від вогняної стріли моба
+    /// Трекінг ухилення від вогняної стріли моба (in-memory)
     func trackArrowDodged() {
         currentRunDodgedArrows += 1
         
-        let curBestDodged = UserDefaults.standard.integer(forKey: weeklyBestDodgedKey)
-        if currentRunDodgedArrows > curBestDodged {
-            UserDefaults.standard.set(currentRunDodgedArrows, forKey: weeklyBestDodgedKey)
+        if currentRunDodgedArrows > weeklyBestDodged {
+            weeklyBestDodged = currentRunDodgedArrows
         }
         
-        let totalDodged = UserDefaults.standard.integer(forKey: weeklyDodgedArrowsKey) + 1
-        UserDefaults.standard.set(totalDodged, forKey: weeklyDodgedArrowsKey)
-        
+        weeklyDodgedArrows += 1
         evaluateActiveAchievements()
     }
     
     /// Оновлення тижневої накопичувальної статистики при завершенні гри (Game Over)
     func completeRun(score: Int, coins: Int = 0, jumps: Int = 0) {
         checkAndPerformWeeklyResetIfNeeded()
-        guard score >= 10 else { return }
-        
-        let defaults = UserDefaults.standard
+        guard score >= 10 else {
+            saveWeeklyMetricsAsync()
+            return
+        }
         
         // Тижнева кількість забігів
-        let totalRuns = defaults.integer(forKey: weeklyRunsKey) + 1
-        defaults.set(totalRuns, forKey: weeklyRunsKey)
+        weeklyRuns += 1
         
         // Тижнева накопичувальна дистанція / очки
-        let totalScore = defaults.integer(forKey: weeklyScoreKey) + score
-        defaults.set(totalScore, forKey: weeklyScoreKey)
+        weeklyScore += score
         
         // Тижневі монети
         if coins > 0 {
-            let totalCoins = defaults.integer(forKey: weeklyCoinsKey) + coins
-            defaults.set(totalCoins, forKey: weeklyCoinsKey)
+            weeklyCoins += coins
         }
         
         // Тижневі стрибки
         if jumps > 0 {
-            let totalJumps = defaults.integer(forKey: weeklyJumpsKey) + jumps
-            defaults.set(totalJumps, forKey: weeklyJumpsKey)
+            weeklyJumps += jumps
         }
         
         evaluateActiveAchievements()
+        saveWeeklyMetricsAsync()
     }
     
-    /// Перевірка умов розблокування для всіх 12 активних тижневих ачівок
+    /// Перевірка умов розблокування для всіх 12 активних тижневих ачівок (швидкий прохід по кешу)
     private func evaluateActiveAchievements() {
-        for ach in achievements {
+        for ach in cachedActiveAchievements {
             guard !isUnlocked(id: ach.id) else { continue }
             if getProgress(for: ach) >= ach.targetValue {
                 unlock(id: ach.id)

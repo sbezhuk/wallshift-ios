@@ -11,6 +11,10 @@ import Foundation
 extension Int {
     /// Уніфікований формат чисел для всієї гри з розділювачем тисяч (наприклад: 25,000, 1,200)
     var formattedWithSeparator: String {
+        // Швидкий шлях для чисел до 1000 без виділення пам'яті під NSNumber та викликів CFNumberFormatter
+        if self > -1000 && self < 1000 {
+            return "\(self)"
+        }
         return NumberFormatter.gameNumberFormatter.string(from: NSNumber(value: self)) ?? "\(self)"
     }
 }
