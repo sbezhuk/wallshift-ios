@@ -369,6 +369,7 @@ final class GameAudio {
         guard !isAdActive, !isMuted, bgmVolume > 0.001 else { return }
         audioQueue.async { [weak self] in
             guard let self = self, !self.isAdActive, !self.isMuted, self.bgmVolume > 0.001 else { return }
+            self.cancelFadeTimer()
             self.ensureBGMPlayingInternal()
             self.applyBGMVolumeInternal()
         }
@@ -442,6 +443,7 @@ final class GameAudio {
     
     private func resumeBGMInternal() {
         guard !isAdActive, !isMuted, bgmVolume > 0.001 else { return }
+        cancelFadeTimer()
         ensureBGMPlayingInternal()
         applyBGMVolumeInternal()
     }

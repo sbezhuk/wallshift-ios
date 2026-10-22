@@ -544,7 +544,6 @@ extension GameScene {
     func restartGame() {
         gameOverOverlayNode?.removeFromParent()
         gameOverOverlayNode = nil
-        stopBGM(fadeDuration: 0.2)
         let newScene = GameScene(size: size, initialMode: .playing)
         newScene.scaleMode = scaleMode
         view?.presentScene(newScene)
@@ -553,7 +552,6 @@ extension GameScene {
     func goToMainMenu() {
         gameOverOverlayNode?.removeFromParent()
         gameOverOverlayNode = nil
-        stopBGM(fadeDuration: 0.2)
         let newScene = GameScene(size: size, initialMode: .menu)
         newScene.scaleMode = scaleMode
         view?.presentScene(newScene)
