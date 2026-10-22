@@ -9,11 +9,12 @@ import AVFoundation
 import UIKit
 
 // MARK: - GameAudio
-/// Високопродуктивний звуковий рушій на базі AVAudioEngine та пре-декодованих PCM-буферів.
+/// Високопродуктивний звуковий рушій на базі AVAudioEngine, пре-декодованих PCM-буферів
+/// та асинхронної обробки у виділеній черзі.
 /// Забезпечує:
-/// 1. 0 мс затримку та нульове блокування головного потоку (стабільні 60-120 FPS).
+/// 1. Стабільні 60/120 FPS без мікролагів та нульове блокування головного потоку рендерингу.
 /// 2. Повну підтримку системних апаратних клавіш гучності (Media Volume).
-/// 3. Ідеальний баланс гучності: соковита фонова музика та збалансовані, не гучні звукові ефекти.
+/// 3. Ідеальний баланс гучності: соковита фонова музика та збалансовані звукові ефекти.
 final class GameAudio {
     static let shared = GameAudio()
     
@@ -24,10 +25,13 @@ final class GameAudio {
     static let jumpVolume: Float = 0.28
     static let gameOverVolume: Float = 0.45
     
+    // MARK: - Виділена аудіо-черга (повне усунення затримок головного потоку)
+    private let audioQueue = DispatchQueue(label: "com.wallshift.gameaudio", qos: .userInteractive)
+    
     // MARK: - AVAudioEngine (Низьколатентне мікшування SFX)
     private let engine = AVAudioEngine()
     
-    // Пре-декодовані в пам'ять PCM-буфери (нуль звернень до диска та IPC під час гри)
+    // Пре-декодовані в пам'ять PCM-буфери (нуль звернень до диска під час гри)
     private var jumpBuffer: AVAudioPCMBuffer?
     private var coinBuffer: AVAudioPCMBuffer?
     private var gameOverBuffer: AVAudioPCMBuffer?
@@ -36,7 +40,7 @@ final class GameAudio {
     private let jumpNode = AVAudioPlayerNode()
     private let gameOverNode = AVAudioPlayerNode()
     
-    // Пул із 4 нод для монет (щоб швидкий збір кількох монет поспіль не обривав звук)
+    // Пул із 4 нод для монет (швидкий збір кількох монет поспіль без обриву)
     private let coinNodes: [AVAudioPlayerNode] = [
         AVAudioPlayerNode(),
         AVAudioPlayerNode(),
@@ -73,7 +77,7 @@ final class GameAudio {
         // 1. Налаштовуємо спільну аудіосесію (реагує на фізичні кнопки гучності)
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
-        try? session.setPreferredIOBufferDuration(0.005)
+        // Використовуємо системний нативний буфер для стабільного VSYNC без навантаження на CPU
         try? session.setActive(true)
         
         let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -108,7 +112,8 @@ final class GameAudio {
         connectNode(gameOverNode, format: gameOverBuffer?.format)
         gameOverNode.volume = GameAudio.gameOverVolume
         
-        // Запускаємо двигун
+        // Готуємо та запускаємо двигун
+        engine.prepare()
         do {
             try engine.start()
         } catch {
@@ -134,7 +139,11 @@ final class GameAudio {
     
     private func ensureEngineRunning() {
         guard !engine.isRunning else { return }
-        try? engine.start()
+        do {
+            try engine.start()
+        } catch {
+            print("[GameAudio] Engine restart error: \(error)")
+        }
     }
     
     private func loadPCMBuffer(named name: String, tempDir: URL) -> AVAudioPCMBuffer? {
@@ -198,7 +207,9 @@ final class GameAudio {
             guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else { return }
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
             if options.contains(.shouldResume) && !isMuted {
-                ensureEngineRunning()
+                audioQueue.async { [weak self] in
+                    self?.ensureEngineRunning()
+                }
                 resumeBGM()
             }
         @unknown default:
@@ -208,39 +219,56 @@ final class GameAudio {
     
     @objc private func handleWillEnterForeground() {
         guard !isMuted else { return }
-        ensureEngineRunning()
+        audioQueue.async { [weak self] in
+            self?.ensureEngineRunning()
+        }
         resumeBGM()
     }
     
     // MARK: - Звукові ефекти (SFX)
     
-    /// Відтворення звуку стрибка героя (0ms затримка, збалансована гучність)
+    /// Відтворення звуку стрибка героя (асинхронно у виділеній черзі, 0ms затримка, нуль блокувань головного потоку)
     func playJump() {
-        guard !isMuted, let buffer = jumpBuffer else { return }
-        ensureEngineRunning()
-        jumpNode.stop()
-        jumpNode.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
-        playNode(jumpNode)
+        guard !isMuted else { return }
+        audioQueue.async { [weak self] in
+            guard let self = self, !self.isMuted, let buffer = self.jumpBuffer else { return }
+            self.ensureEngineRunning()
+            if self.jumpNode.isPlaying {
+                self.jumpNode.stop()
+            }
+            self.jumpNode.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
+            self.playNode(self.jumpNode)
+        }
     }
     
-    /// Відтворення звуку підбору монети з пулу нод (без переривання при швидкому зборі)
+    /// Відтворення звуку підбору монети з пулу нод (асинхронно, без переривання при швидкому зборі)
     func playCoin() {
-        guard !isMuted, let buffer = coinBuffer else { return }
-        ensureEngineRunning()
-        let node = coinNodes[currentCoinNodeIndex]
-        currentCoinNodeIndex = (currentCoinNodeIndex + 1) % coinNodes.count
-        node.stop()
-        node.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
-        playNode(node)
+        guard !isMuted else { return }
+        audioQueue.async { [weak self] in
+            guard let self = self, !self.isMuted, let buffer = self.coinBuffer else { return }
+            self.ensureEngineRunning()
+            let node = self.coinNodes[self.currentCoinNodeIndex]
+            self.currentCoinNodeIndex = (self.currentCoinNodeIndex + 1) % self.coinNodes.count
+            if node.isPlaying {
+                node.stop()
+            }
+            node.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
+            self.playNode(node)
+        }
     }
     
     /// Відтворення звуку Game Over
     func playGameOver() {
-        guard !isMuted, let buffer = gameOverBuffer else { return }
-        ensureEngineRunning()
-        gameOverNode.stop()
-        gameOverNode.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
-        playNode(gameOverNode)
+        guard !isMuted else { return }
+        audioQueue.async { [weak self] in
+            guard let self = self, !self.isMuted, let buffer = self.gameOverBuffer else { return }
+            self.ensureEngineRunning()
+            if self.gameOverNode.isPlaying {
+                self.gameOverNode.stop()
+            }
+            self.gameOverNode.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
+            self.playNode(self.gameOverNode)
+        }
     }
     
     // MARK: - Фонова музика (BGM)
@@ -298,11 +326,16 @@ final class GameAudio {
         isMuted = newMuted
         if newMuted {
             pauseBGM()
-            jumpNode.stop()
-            coinNodes.forEach { $0.stop() }
-            gameOverNode.stop()
+            audioQueue.async { [weak self] in
+                guard let self = self else { return }
+                self.jumpNode.stop()
+                self.coinNodes.forEach { $0.stop() }
+                self.gameOverNode.stop()
+            }
         } else {
-            ensureEngineRunning()
+            audioQueue.async { [weak self] in
+                self?.ensureEngineRunning()
+            }
             resumeBGM()
         }
         return newMuted

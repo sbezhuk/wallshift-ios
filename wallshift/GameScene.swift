@@ -126,6 +126,20 @@ final class PooledSprayNode: SKNode {
         fatalError("init(coder:) has not been implemented")
     }
     
+    private lazy var burstAction: SKAction = {
+        SKAction.sequence([
+            SKAction.wait(forDuration: 0.04),
+            SKAction.run { [weak self] in
+                self?.emitter.particleBirthRate = 0
+                self?.shimmerEmitter.particleBirthRate = 0
+            },
+            SKAction.wait(forDuration: 0.32),
+            SKAction.run { [weak self] in
+                self?.inUse = false
+            }
+        ])
+    }()
+    
     func trigger(at pos: CGPoint) {
         self.position = pos
         self.inUse = true
@@ -137,18 +151,7 @@ final class PooledSprayNode: SKNode {
         shimmerEmitter.particleBirthRate = 280
         
         removeAction(forKey: "sprayBurst")
-        let burst = SKAction.sequence([
-            SKAction.wait(forDuration: 0.04),
-            SKAction.run { [weak self] in
-                self?.emitter.particleBirthRate = 0
-                self?.shimmerEmitter.particleBirthRate = 0
-            },
-            SKAction.wait(forDuration: 0.32),
-            SKAction.run { [weak self] in
-                self?.inUse = false
-            }
-        ])
-        run(burst, withKey: "sprayBurst")
+        run(burstAction, withKey: "sprayBurst")
     }
 }
 
