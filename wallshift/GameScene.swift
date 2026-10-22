@@ -179,7 +179,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     // MARK: - Active Theme & Cached Textures
-    private var currentTheme: ThemeData {
+    var currentTheme: ThemeData {
         return ThemeManager.shared.currentTheme
     }
     
@@ -361,7 +361,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private static let bgmTargetVolume: Float = GameAudio.bgmTargetVolume
     
     // MARK: - Nodes & State
-    private let cameraNode = SKCameraNode()
+    let cameraNode = SKCameraNode()
     
     /// Окремий вузол героя з власною ієрархією спрайтів та анімацій
     private var player: PlayerNode!
@@ -397,9 +397,22 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     private let initialMode: GameState
     
     // Ноди та елементи головного меню
-    private var menuNode: SKNode?
+    var menuNode: SKNode?
     private var soundIconSprite: SKSpriteNode?
     private var menuCoinsText: SKLabelNode?
+    
+    // Ноди та елементи системи досягнень
+    var achievementsNode: SKNode?
+    var currentAchievementsPage: Int = 0
+    var toastQueue: [Achievement] = []
+    var isShowingToast: Bool = false
+    
+    // Статистика поточного забігу для трекінгу досягнень
+    private(set) var runJumpsCount: Int = 0
+    private(set) var tookDamageThisRun: Bool = false
+    private(set) var fellIntoAbyssThisRun: Bool = false
+    private var clutchScoreStart: Int? = nil
+    private var clutchScoreThisRun: Int = 0
     
     // Ноди та елементи маркету/магазину
     private var shopNode: SKNode?
@@ -445,7 +458,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     
     // MARK: - Coins System
     private(set) var coinsCollected: Int = 0
-    private var totalCoins: Int {
+    var totalCoins: Int {
         get { UserDefaults.standard.integer(forKey: "TotalWallShiftCoins") }
         set { UserDefaults.standard.set(newValue, forKey: "TotalWallShiftCoins") }
     }
@@ -645,6 +658,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         setupHUD()
         setupProceduralTrack()
         
+        // Підписка на події розблокування досягнень (оновлення бейджика в меню)
+        AchievementManager.shared.onAchievementUnlocked = { [weak self] _ in
+            self?.updateAchievementsBadge()
+        }
+        
         if initialMode == .menu {
             gameState = .menu
             isGameOver = false
@@ -655,6 +673,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         } else {
             gameState = .playing
             isGameOver = false
+            AchievementManager.shared.startNewRun()
+            runJumpsCount = 0
+            tookDamageThisRun = false
+            fellIntoAbyssThisRun = false
             player.startRunningAnimation()
             hudNode.alpha = 1.0
             startBGM(lowVolume: false)
@@ -723,17 +745,17 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     /// Відтворення звуку стрибка героя при тапі на екран
-    private func playJumpSound() {
+    func playJumpSound() {
         GameAudio.shared.playJump()
     }
     
     /// Відтворення звуку закінчення гри при програші
-    private func playGameOverSound() {
+    func playGameOverSound() {
         GameAudio.shared.playGameOver()
     }
     
     /// Відтворення звуку підбору монети (coin_pickup)
-    private func playCoinSound() {
+    func playCoinSound() {
         GameAudio.shared.playCoin()
     }
     
@@ -897,7 +919,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - In-Scene Seamless Main Menu
     
     /// Автоматичний періодичний стрибок героя між стінами під час перебування у головному меню
-    private func scheduleNextMenuAutoJump(delay: TimeInterval = 2.0) {
+    func scheduleNextMenuAutoJump(delay: TimeInterval = 2.0) {
         removeAction(forKey: "menuAutoJump")
         guard gameState == .menu else { return }
         
@@ -1094,6 +1116,26 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         soundBtn.addChild(soundIcon)
         self.soundIconSprite = soundIcon
         
+        // 5b. Кнопка досягнень із зіркою (симетрично до кнопки звуку вгорі ліворуч)
+        let achBtn = SKSpriteNode(imageNamed: currentTheme.guiCircleBtnName)
+        achBtn.name = "menuAchievementsButton"
+        achBtn.size = CGSize(width: 48.0, height: 48.0)
+        achBtn.position = CGPoint(
+            x: -(size.width / 2.0) + 44.0,
+            y: (size.height / 2.0) - 58.0
+        )
+        achBtn.zPosition = 10
+        container.addChild(achBtn)
+        
+        let achIcon = SKSpriteNode(imageNamed: "gui_icon_star")
+        achIcon.name = "menuAchievementsButton"
+        achIcon.size = CGSize(width: 24.0, height: 24.0)
+        achIcon.position = .zero
+        achIcon.zPosition = 2
+        achBtn.addChild(achIcon)
+        
+        updateAchievementsBadge()
+        
         // 6. Кнопка EXIT у самому низу меню із Basic_GUI_Bundle
         let exitBtnW: CGFloat = min(170.0, size.width - 120.0)
         let exitBtnH: CGFloat = exitBtnW * (304.0 / 983.0)
@@ -1153,6 +1195,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // Анімація згасання кнопки звуку
         if let soundBtn = menu.childNode(withName: "menuSoundButton") {
             soundBtn.run(SKAction.fadeOut(withDuration: 0.25))
+        }
+        
+        // Анімація згасання кнопки досягнень
+        if let achBtn = menu.childNode(withName: "menuAchievementsButton") {
+            achBtn.run(SKAction.fadeOut(withDuration: 0.25))
         }
         
         // Анімація згасання кнопки маркету
@@ -1547,7 +1594,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     /// Оновлення лічильника монет у меню після покупок
-    private func updateMenuCoinsDisplay() {
+    func updateMenuCoinsDisplay() {
         menuCoinsText?.text = totalCoins.formattedWithSeparator
     }
     
@@ -1999,6 +2046,14 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // Починається підйом камери та ігровий процес
         gameState = .playing
         lastUpdateTime = 0
+        
+        // Скидання статистики поточного забігу для досягнень
+        AchievementManager.shared.startNewRun()
+        runJumpsCount = 0
+        tookDamageThisRun = false
+        fellIntoAbyssThisRun = false
+        clutchScoreStart = nil
+        clutchScoreThisRun = 0
         
         // Піднімаємо гучність фонової музики до повного ігрового рівня
         if !isMuted {
@@ -2797,6 +2852,9 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         activeFireArrows.removeAll { arrow in
             if arrow.position.y < screenBottom - 120.0 || arrow.parent == nil {
+                if arrow.parent != nil {
+                    AchievementManager.shared.trackArrowDodged()
+                }
                 arrow.removeFromParent()
                 return true
             }
@@ -2816,6 +2874,41 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
         let locInCamera = touch.location(in: cameraNode)
+        
+        // -1. Взаємодія з відкритим вікном досягнень
+        if let _ = achievementsNode {
+            let touchedNodes = cameraNode.nodes(at: locInCamera)
+            for node in touchedNodes {
+                let nodeName = node.name ?? node.parent?.name ?? ""
+                
+                if nodeName == "achievementsCloseButton" || nodeName == "achievementsDimBg" {
+                    playJumpSound()
+                    dismissAchievementsOverlay()
+                    return
+                }
+                
+                if nodeName == "achievementsPrevButton" {
+                    playJumpSound()
+                    currentAchievementsPage -= 1
+                    renderAchievementsPage()
+                    return
+                }
+                
+                if nodeName == "achievementsNextButton" {
+                    playJumpSound()
+                    currentAchievementsPage += 1
+                    renderAchievementsPage()
+                    return
+                }
+                
+                if nodeName.hasPrefix("claim_") {
+                    let achId = String(nodeName.dropFirst(6))
+                    handleClaimAchievement(id: achId)
+                    return
+                }
+            }
+            return
+        }
         
         // 0. Взаємодія з відкритим вікном маркету/магазину
         if let shop = shopNode {
@@ -2901,6 +2994,11 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                     showShopOverlay()
                     return
                 }
+                if name == "menuAchievementsButton" {
+                    playJumpSound()
+                    showAchievementsOverlay()
+                    return
+                }
                 if name == "menuSoundButton" {
                     toggleMute()
                     return
@@ -2966,6 +3064,19 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         // Відтворюємо звук стрибка
         playJumpSound()
         
+        // Трекінг стрибків для досягнення Wall Hopper
+        if gameState == .playing {
+            runJumpsCount += 1
+            AchievementManager.shared.trackRunProgress(
+                score: score,
+                runJumps: runJumpsCount,
+                runCoins: coinsCollected,
+                tookDamageThisRun: tookDamageThisRun,
+                fellIntoAbyssThisRun: fellIntoAbyssThisRun,
+                usedReviveThisRun: hasUsedAdRevive
+            )
+        }
+        
         // Визначаємо цільову горизонтальну позицію (на протилежну стіну)
         let targetX: CGFloat = player.isOnLeftWall ? playerRightX : playerLeftX
         
@@ -3022,6 +3133,24 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             if newScore != score {
                 score = newScore
                 scoreLabel.text = score.formattedWithSeparator
+                
+                // Трекінг виживання з 1 життям (Clutch Survival)
+                if currentLives == 1 {
+                    if clutchScoreStart == nil {
+                        clutchScoreStart = score
+                    }
+                    clutchScoreThisRun = max(clutchScoreThisRun, score - (clutchScoreStart ?? score))
+                }
+                
+                // Оновлення прогресу досягнень у реальному часі
+                AchievementManager.shared.trackRunProgress(
+                    score: score,
+                    runJumps: runJumpsCount,
+                    runCoins: coinsCollected,
+                    tookDamageThisRun: tookDamageThisRun,
+                    fellIntoAbyssThisRun: fellIntoAbyssThisRun,
+                    usedReviveThisRun: hasUsedAdRevive
+                )
                 
                 // Сповіщення про проходження ювілейних відміток (кожні 100 очок)
                 let milestone = score / 100
@@ -3167,6 +3296,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         lastAbyssHitTime = now
         
         currentLives -= 1
+        tookDamageThisRun = true
+        fellIntoAbyssThisRun = true
         updateHUD()
         
         if currentLives > 0 {
@@ -3229,6 +3360,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         arrow.explodeAndRemove()
         currentLives -= 1
+        tookDamageThisRun = true
         updateHUD()
         
         if currentLives > 0 {
@@ -3243,6 +3375,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         guard !player.isInvulnerable, !isGameOver, !isPlayerFalling else { return }
         
         currentLives -= 1
+        tookDamageThisRun = true
         updateHUD()
         
         if currentLives > 0 {
@@ -3292,10 +3425,20 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // Спливаючий золотистий індикатор +1 над монетою
         playCoinPickupEffect(at: coin.position)
+        
+        // Оновлення досягнень зі збору монет
+        AchievementManager.shared.trackRunProgress(
+            score: score,
+            runJumps: runJumpsCount,
+            runCoins: coinsCollected,
+            tookDamageThisRun: tookDamageThisRun,
+            fellIntoAbyssThisRun: fellIntoAbyssThisRun,
+            usedReviveThisRun: hasUsedAdRevive
+        )
     }
     
     /// Миттєвий запуск золотистого спрею мікро-частинок з попередньо виділеного пулу (нуль алокацій)
-    private func playCoinPickupEffect(at position: CGPoint) {
+    func playCoinPickupEffect(at position: CGPoint) {
         if let node = coinSprayPool.first(where: { !$0.inUse }) {
             node.trigger(at: position)
         } else if let oldest = coinSprayPool.first {
@@ -3334,6 +3477,17 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         guard !isGameOver else { return }
         isGameOver = true
         gameState = .gameOver
+        
+        // Фінальна перевірка досягнень за сесію та довгострокової статистики
+        AchievementManager.shared.trackRunProgress(
+            score: score,
+            runJumps: runJumpsCount,
+            runCoins: coinsCollected,
+            tookDamageThisRun: tookDamageThisRun,
+            fellIntoAbyssThisRun: fellIntoAbyssThisRun,
+            usedReviveThisRun: hasUsedAdRevive
+        )
+        AchievementManager.shared.completeRun(score: score)
         
         // Якщо звук ще не почав грати, запускаємо його
         playGameOverSound()
