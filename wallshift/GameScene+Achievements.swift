@@ -98,6 +98,7 @@ extension GameScene {
     func showAchievementsOverlay() {
         guard achievementsNode == nil else { return }
         removeAction(forKey: "menuAutoJump")
+        AchievementManager.shared.checkAndPerformWeeklyResetIfNeeded()
         
         let container = SKNode()
         container.name = "achievementsContainer"
@@ -190,11 +191,23 @@ extension GameScene {
         if fillRatio > 0 {
             let fillW = max(8.0, barW * fillRatio)
             let fillBar = SKShapeNode(rectOf: CGSize(width: fillW, height: barH), cornerRadius: 4.0)
+            fillBar.name = "achievementsFillBar"
             fillBar.fillColor = currentTheme.guiAccentColor
             fillBar.strokeColor = .clear
             fillBar.position = CGPoint(x: -barW / 2.0 + (fillW / 2.0), y: -6.0)
             statsNode.addChild(fillBar)
         }
+        
+        // Таймер до щотижневого скидання / кулдауну
+        let timerLabel = SKLabelNode(fontNamed: AppFont.name)
+        timerLabel.name = "achievementsTimerLabel"
+        timerLabel.text = "WEEKLY RESET IN: \(AchievementManager.shared.weeklyResetFormattedString)"
+        timerLabel.fontSize = 11.0
+        timerLabel.fontColor = SKColor(red: 1.0, green: 0.82, blue: 0.35, alpha: 1.0)
+        timerLabel.verticalAlignmentMode = .center
+        timerLabel.horizontalAlignmentMode = .center
+        timerLabel.position = CGPoint(x: 0, y: -20.0)
+        statsNode.addChild(timerLabel)
         
         // 6. Динамічний контейнер сторінки
         let contentNode = SKNode()
@@ -499,11 +512,29 @@ extension GameScene {
         renderAchievementsPage()
         
         if let card = achievementsNode?.childNode(withName: "achievementsCard"),
-           let statsNode = card.childNode(withName: "achievementsStatsNode"),
-           let countLabel = statsNode.childNode(withName: "achievementsCompletedCountLabel") as? SKLabelNode {
+           let statsNode = card.childNode(withName: "achievementsStatsNode") {
             let total = AchievementManager.shared.totalAchievementsCount
             let unl = AchievementManager.shared.unlockedCount
-            countLabel.text = "UNLOCKED: \(unl) / \(total)"
+            if let countLabel = statsNode.childNode(withName: "achievementsCompletedCountLabel") as? SKLabelNode {
+                countLabel.text = "UNLOCKED: \(unl) / \(total)"
+            }
+            if let timerLabel = statsNode.childNode(withName: "achievementsTimerLabel") as? SKLabelNode {
+                timerLabel.text = "WEEKLY RESET IN: \(AchievementManager.shared.weeklyResetFormattedString)"
+            }
+            statsNode.childNode(withName: "achievementsFillBar")?.removeFromParent()
+            let cardW: CGFloat = min(340.0, size.width - 24.0)
+            let barW: CGFloat = cardW - 70.0
+            let barH: CGFloat = 8.0
+            let fillRatio = total > 0 ? CGFloat(unl) / CGFloat(total) : 0
+            if fillRatio > 0 {
+                let fillW = max(8.0, barW * fillRatio)
+                let fillBar = SKShapeNode(rectOf: CGSize(width: fillW, height: barH), cornerRadius: 4.0)
+                fillBar.name = "achievementsFillBar"
+                fillBar.fillColor = currentTheme.guiAccentColor
+                fillBar.strokeColor = .clear
+                fillBar.position = CGPoint(x: -barW / 2.0 + (fillW / 2.0), y: -6.0)
+                statsNode.addChild(fillBar)
+            }
         }
     }
 }

@@ -13,15 +13,12 @@ import Foundation
 struct wallshiftTests {
 
     @Test func testShopAdRewardEconomyAndBalance() async throws {
-        // Перевірка збереження ігрового балансу:
-        // Винагорода не повинна знецінювати покупку тем у магазині.
         let reward = ShopAdRewardManager.rewardCoins
         let cooldown = ShopAdRewardManager.cooldownDuration
         
         #expect(reward == 500)
-        #expect(cooldown >= 3600) // Щонайменше 1 година (наразі 2 години)
+        #expect(cooldown >= 3600)
         
-        // Перевірка відносно цін тем
         let forestTheme = ThemeManager.shared.themes.first(where: { $0.id == "forest_ranger" })
         let golemTheme = ThemeManager.shared.themes.first(where: { $0.id == "crystal_golem" })
         
@@ -29,14 +26,12 @@ struct wallshiftTests {
         #expect(golemTheme != nil)
         
         if let forest = forestTheme, let golem = golemTheme {
-            // Винагорода за одне відео має складати до 2% від вартості скіна
             #expect(Double(reward) / Double(forest.price) <= 0.05)
             #expect(Double(reward) / Double(golem.price) <= 0.05)
         }
     }
 
     @Test func testShopAdRewardClaimAndCooldown() async throws {
-        // Гарантуємо активне підключення для тесту кулдауну
         NetworkMonitor.shared.simulateConnectionState(true)
         defer {
             NetworkMonitor.shared.simulateConnectionState(nil)
@@ -46,7 +41,6 @@ struct wallshiftTests {
         let manager = ShopAdRewardManager.shared
         manager.resetCooldownForTesting()
         
-        // Початковий стан — нагорода доступна
         #expect(manager.isRewardAvailable == true)
         #expect(manager.remainingCooldown == 0)
         
@@ -56,12 +50,10 @@ struct wallshiftTests {
         #expect(claimed == ShopAdRewardManager.rewardCoins)
         #expect(ThemeManager.shared.totalCoins == startCoins + ShopAdRewardManager.rewardCoins)
         
-        // Після отримання — нагорода блокується кулдауном
         #expect(manager.isRewardAvailable == false)
         #expect(manager.remainingCooldown > 0)
         #expect(manager.remainingCooldown <= ShopAdRewardManager.cooldownDuration)
         
-        // Перевірка форматування рядка таймера
         let formatted = manager.formattedCooldownString()
         #expect(!formatted.isEmpty)
         #expect(formatted.contains(":"))
@@ -71,23 +63,16 @@ struct wallshiftTests {
         let manager = ShopAdRewardManager.shared
         manager.resetCooldownForTesting()
         
-        // 1. Симулюємо відсутність інтернету (офлайн)
         NetworkMonitor.shared.simulateConnectionState(false)
-        
         #expect(NetworkMonitor.shared.isConnected == false)
         #expect(manager.isNetworkAvailable == false)
-        // Навіть якщо кулдаун минув, винагорода недоступна без інтернету:
         #expect(manager.isRewardAvailable == false)
         
-        // 2. Симулюємо відновлення інтернету
         NetworkMonitor.shared.simulateConnectionState(true)
-        
         #expect(NetworkMonitor.shared.isConnected == true)
         #expect(manager.isNetworkAvailable == true)
-        // Тепер нагорода доступна:
         #expect(manager.isRewardAvailable == true)
         
-        // Скидаємо симуляцію
         NetworkMonitor.shared.simulateConnectionState(nil)
         manager.resetCooldownForTesting()
     }
@@ -108,7 +93,6 @@ struct wallshiftTests {
             #expect(textures.count == theme.coinFrameCount)
         }
         
-        // У кожної теми мають бути свої унікальні іконки монеток
         #expect(guiCoinNames.count == themes.count)
     }
 
@@ -122,104 +106,132 @@ struct wallshiftTests {
             guiStarNames.insert(theme.guiStarIconName)
         }
         
-        // У кожної теми мають бути свої унікальні іконки зірочок
         #expect(guiStarNames.count == themes.count)
     }
 
-    @Test func testAchievementsCatalogAndTiers() async throws {
-        let achievements = AchievementManager.shared.achievements
+    @Test func testWeeklyAchievementsPoolAndRotation() async throws {
+        // 1. Повний каталог містить рівно 100 різноманітних досягнень
+        let catalog = AchievementManager.allCatalogAchievements
+        #expect(catalog.count == 100)
         
-        // Перевірка кількості досягнень (13 хардкорних челенджів)
-        #expect(achievements.count == 13)
+        // Перевірка унікальності ID всіх 100 ачівок
+        let uniqueIDs = Set(catalog.map { $0.id })
+        #expect(uniqueIDs.count == 100)
         
-        // Перевірка наявності всіх рівнів складності
-        let easyList = achievements.filter { $0.difficulty == .easy }
-        let mediumList = achievements.filter { $0.difficulty == .medium }
-        let hardList = achievements.filter { $0.difficulty == .hard }
+        // Перевірка розподілу складності в каталозі
+        let easyCount = catalog.filter { $0.difficulty == .easy }.count
+        let mediumCount = catalog.filter { $0.difficulty == .medium }.count
+        let hardCount = catalog.filter { $0.difficulty == .hard }.count
         
-        #expect(easyList.count == 3)
-        #expect(mediumList.count == 5)
-        #expect(hardList.count == 5)
+        #expect(easyCount == 40)
+        #expect(mediumCount == 35)
+        #expect(hardCount == 25)
         
-        // Перевірка солідних винагород за складність
-        for easy in easyList {
-            #expect(easy.coinReward >= 500 && easy.coinReward <= 1000)
-        }
-        for med in mediumList {
-            #expect(med.coinReward >= 2000 && med.coinReward <= 4000)
-        }
-        for hard in hardList {
-            #expect(hard.coinReward >= 7000 && hard.coinReward <= 12000)
-        }
+        // 2. На поточний тиждень дається рівно 12 активних ачівок
+        let manager = AchievementManager.shared
+        manager.performWeeklyReset()
+        
+        let weekly = manager.achievements
+        #expect(weekly.count == 12)
+        
+        let weeklyEasy = weekly.filter { $0.difficulty == .easy }
+        let weeklyMedium = weekly.filter { $0.difficulty == .medium }
+        let weeklyHard = weekly.filter { $0.difficulty == .hard }
+        
+        #expect(weeklyEasy.count == 5)
+        #expect(weeklyMedium.count == 4)
+        #expect(weeklyHard.count == 3)
+        
+        // 3. Перевірка таймера до скидання
+        #expect(manager.timeRemainingUntilReset > 0)
+        #expect(manager.timeRemainingUntilReset <= AchievementManager.weeklyCycleSeconds)
+        #expect(!manager.weeklyResetFormattedString.isEmpty)
     }
 
     @Test func testAchievementProgressAndClaiming() async throws {
         let manager = AchievementManager.shared
+        manager.performWeeklyReset()
         
-        // Тестуємо досягнення "Trailblazer" (score 300)
-        guard let trailblazer = manager.achievements.first(where: { $0.id == "trailblazer" }) else {
-            Issue.record("trailblazer achievement not found")
+        // Знаходимо будь-яку активну ачівку на стрибки або рахунок для тестування
+        guard let testAch = manager.achievements.first(where: { $0.metric == .singleRunScore || $0.metric == .singleRunJumps }) else {
+            Issue.record("No suitable test achievement found")
             return
         }
         
-        // Перевіряємо що при 150 очках ачівка ще заблокована
-        manager.trackRunProgress(
-            score: 150,
-            runJumps: 20,
-            runCoins: 30,
-            tookDamageThisRun: false,
-            fellIntoAbyssThisRun: false,
-            usedReviveThisRun: false
-        )
+        #expect(!manager.isUnlocked(id: testAch.id))
+        #expect(!manager.isClaimed(id: testAch.id))
         
-        // Тепер забіг на 320 очок (подолано 300)
-        manager.trackRunProgress(
-            score: 320,
-            runJumps: 40,
-            runCoins: 50,
-            tookDamageThisRun: false,
-            fellIntoAbyssThisRun: false,
-            usedReviveThisRun: false
-        )
+        // Виконуємо ціль досягнення
+        if testAch.metric == .singleRunScore {
+            manager.trackRunProgress(
+                score: testAch.targetValue + 50,
+                runJumps: 0,
+                runCoins: 0,
+                tookDamageThisRun: false,
+                fellIntoAbyssThisRun: false,
+                usedReviveThisRun: false
+            )
+        } else {
+            manager.trackRunProgress(
+                score: 0,
+                runJumps: testAch.targetValue + 10,
+                runCoins: 0,
+                tookDamageThisRun: false,
+                fellIntoAbyssThisRun: false,
+                usedReviveThisRun: false
+            )
+        }
         
-        #expect(manager.isUnlocked(id: "trailblazer") == true)
-        #expect(trailblazer.isUnlocked == true)
+        #expect(manager.isUnlocked(id: testAch.id) == true)
+        #expect(testAch.isUnlocked == true)
+        #expect(!manager.isClaimed(id: testAch.id))
         
+        // Забираємо нагороду
         let startCoins = UserDefaults.standard.integer(forKey: "TotalWallShiftCoins")
-        let rewardGained = manager.claimReward(for: trailblazer)
+        let rewardGained = manager.claimReward(for: testAch)
         
-        #expect(rewardGained == trailblazer.coinReward)
-        #expect(manager.isClaimed(id: "trailblazer") == true)
-        #expect(trailblazer.isClaimed == true)
+        #expect(rewardGained == testAch.coinReward)
+        #expect(manager.isClaimed(id: testAch.id) == true)
+        #expect(testAch.isClaimed == true)
         
         let endCoins = UserDefaults.standard.integer(forKey: "TotalWallShiftCoins")
-        #expect(endCoins == startCoins + trailblazer.coinReward)
+        #expect(endCoins == startCoins + testAch.coinReward)
         
-        // Повторне забирання нагороди має повертати 0
-        let doubleClaim = manager.claimReward(for: trailblazer)
+        // Повторне забирання повертає 0
+        let doubleClaim = manager.claimReward(for: testAch)
         #expect(doubleClaim == 0)
     }
 
-    @Test func testLifetimeRunsAndMarathonTracking() async throws {
+    @Test func testWeeklyCooldownAndReset() async throws {
         let manager = AchievementManager.shared
-        let startRuns = UserDefaults.standard.integer(forKey: "WallShiftTotalRunsCount")
-        let startLifetime = UserDefaults.standard.integer(forKey: "WallShiftLifetimeScore")
+        manager.performWeeklyReset()
         
-        // Завершення забігу з результатом 450 очок
-        manager.completeRun(score: 450)
+        // Розблоковуємо першу ачівку
+        let firstAch = manager.achievements[0]
+        manager.unlock(id: firstAch.id)
+        _ = manager.claimReward(for: firstAch)
         
-        let endRuns = UserDefaults.standard.integer(forKey: "WallShiftTotalRunsCount")
-        let endLifetime = UserDefaults.standard.integer(forKey: "WallShiftLifetimeScore")
+        #expect(manager.isUnlocked(id: firstAch.id) == true)
+        #expect(manager.isClaimed(id: firstAch.id) == true)
         
-        #expect(endRuns == startRuns + 1)
-        #expect(endLifetime == startLifetime + 450)
+        // Симулюємо настання нового тижня (минуло 7 днів)
+        let eightDaysAgo = Date().addingTimeInterval(-(7 * 24 * 3600 + 3600))
+        manager.performWeeklyReset(newStartDate: eightDaysAgo)
+        manager.checkAndPerformWeeklyResetIfNeeded()
+        
+        // Після щотижневого кулдауну всі ачівки анульовані і готові до повторного проходження
+        #expect(manager.unlockedCount == 0)
+        #expect(manager.achievements.count == 12)
+        for ach in manager.achievements {
+            #expect(!manager.isUnlocked(id: ach.id))
+            #expect(!manager.isClaimed(id: ach.id))
+        }
     }
 
     @Test func testDynamicAdManagerLifecycleAndProtection() async throws {
         let adManager = DynamicAdManager.shared
         adManager.resetForTesting()
         
-        // 1. FTUE: перші 3 спроби новачка не повинні викликати рекламу взагалі
         adManager.notifyRunStarted()
         adManager.notifyRunCompleted(duration: 25.0, score: 50, isNewHighScore: false)
         #expect(adManager.isEligibleForInterstitial(isNewHighScore: false) == false)
@@ -232,37 +244,30 @@ struct wallshiftTests {
         adManager.notifyRunCompleted(duration: 25.0, score: 50, isNewHighScore: false)
         #expect(adManager.isEligibleForInterstitial(isNewHighScore: false) == false)
         
-        // 2. Симулюємо досвідченого гравця (>3 runs) з давнім кулдауном
-        let oldTimestamp = Date().timeIntervalSince1970 - 120.0 // 2 хвилини тому
-        adManager.simulateStateForTesting(pendingAttempts: 3, lifetimeRuns: 10, lastAdTimestamp: oldTimestamp)
+        let oldTimestamp = Date().timeIntervalSince1970 - 120.0
+        adManager.simulateStateForTesting(pendingAttempts: 3, lifetimeRuns: 10, sessionRuns: 5, lastAdTimestamp: oldTimestamp)
         
-        // До 4-ї спроби реклами ще немає
         #expect(adManager.isEligibleForInterstitial(isNewHighScore: false) == false)
         
-        // 3. Звичайна 4-та спроба (+1) досягає порогу 4
         adManager.notifyRunStarted()
         adManager.notifyRunCompleted(duration: 25.0, score: 60, isNewHighScore: false)
         #expect(adManager.pendingAttempts >= 4)
         #expect(adManager.isEligibleForInterstitial(isNewHighScore: false) == true)
         
-        // 4. Якщо встановлено High Score — реклама блокується
         #expect(adManager.isEligibleForInterstitial(isNewHighScore: true) == false)
         
-        // 5. Якщо гравець подивився Rewarded Ad (Revive / Coins) — спроби скидаються на 0
         adManager.notifyRewardedAdWatched()
         #expect(adManager.pendingAttempts == 0)
         #expect(adManager.isEligibleForInterstitial(isNewHighScore: false) == false)
         
-        // 6. Marathon Run: довгий забіг (>55с) додає +2 спроби
-        adManager.simulateStateForTesting(pendingAttempts: 2, lifetimeRuns: 10, lastAdTimestamp: oldTimestamp)
+        adManager.simulateStateForTesting(pendingAttempts: 2, lifetimeRuns: 10, sessionRuns: 5, lastAdTimestamp: oldTimestamp)
         adManager.notifyRunStarted()
         adManager.notifyRunCompleted(duration: 65.0, score: 140, isNewHighScore: false)
         #expect(adManager.pendingAttempts == 4)
         #expect(adManager.isEligibleForInterstitial(isNewHighScore: false) == true)
         
-        // 7. Cooldown захист: якщо минуло лише 10 секунд після показу — блокується
         let recentTimestamp = Date().timeIntervalSince1970 - 10.0
-        adManager.simulateStateForTesting(pendingAttempts: 5, lifetimeRuns: 10, lastAdTimestamp: recentTimestamp)
+        adManager.simulateStateForTesting(pendingAttempts: 5, lifetimeRuns: 10, sessionRuns: 5, lastAdTimestamp: recentTimestamp)
         #expect(adManager.isEligibleForInterstitial(isNewHighScore: false) == false)
         
         adManager.resetForTesting()

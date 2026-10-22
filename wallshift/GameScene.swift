@@ -694,6 +694,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         setupProceduralTrack()
         
         // Підписка на події розблокування досягнень (оновлення бейджика в меню)
+        AchievementManager.shared.checkAndPerformWeeklyResetIfNeeded()
         AchievementManager.shared.onAchievementUnlocked = { [weak self] _ in
             self?.updateAchievementsBadge()
         }
@@ -3411,7 +3412,8 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
                     runCoins: coinsCollected,
                     tookDamageThisRun: tookDamageThisRun,
                     fellIntoAbyssThisRun: fellIntoAbyssThisRun,
-                    usedReviveThisRun: hasUsedAdRevive
+                    usedReviveThisRun: hasUsedAdRevive,
+                    clutchScore: clutchScoreThisRun
                 )
                 
                 // Сповіщення про проходження ювілейних відміток (кожні 100 очок)
@@ -3652,6 +3654,7 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
         if currentLives < GameScene.maxLives {
             heart.collect()
             currentLives += 1
+            AchievementManager.shared.trackHeartCollected()
             updateHUD()
             playHeartPickupEffect(at: heart.position)
         } else {
@@ -3811,9 +3814,10 @@ final class GameScene: SKScene, SKPhysicsContactDelegate {
             runCoins: coinsCollected,
             tookDamageThisRun: tookDamageThisRun,
             fellIntoAbyssThisRun: fellIntoAbyssThisRun,
-            usedReviveThisRun: hasUsedAdRevive
+            usedReviveThisRun: hasUsedAdRevive,
+            clutchScore: clutchScoreThisRun
         )
-        AchievementManager.shared.completeRun(score: score)
+        AchievementManager.shared.completeRun(score: score, coins: coinsCollected, jumps: runJumpsCount)
         
         // Якщо звук ще не почав грати, запускаємо його
         playGameOverSound()
