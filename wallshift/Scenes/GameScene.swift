@@ -495,7 +495,8 @@ final class GameScene: SKScene {
             gameState = .menu
             isGameOver = false
             player.setReadyStance()
-            hudNode.alpha = 0.0
+            hudNode.alpha = 1.0
+            hudNode.isHidden = true
             showMainMenu(animated: false)
             startBGM(lowVolume: true)
         } else {
@@ -706,9 +707,10 @@ final class GameScene: SKScene {
         menuNode = nil
         removeAction(forKey: "menuAutoJump")
         
-        // Плавна поява ігрового HUD (життя, рахунок, монети)
-        hudNode.alpha = 0.0
-        hudNode.run(SKAction.fadeIn(withDuration: 0.25))
+        // Відображення ігрового HUD (життя, рахунок, монети)
+        hudNode.alpha = 1.0
+        hudNode.isHidden = false
+        hudNode.removeAllActions()
         
         // Головний герой починає бігти з тієї стіни, на якій він стоїть!
         if !player.isJumping {
@@ -768,7 +770,7 @@ final class GameScene: SKScene {
         lastUpdateTime = currentTime
         
         // Захист від різких стрибків дельти часу (при перериваннях системи чи навантаженні)
-        if deltaTime > 0.1 {
+        if deltaTime > 1.0 / 60.0 {
             deltaTime = 1.0 / 60.0
         }
         

@@ -17,7 +17,7 @@ final class GameAudio {
     
     // MARK: - Рівні гучності (баланс музики та ефектів)
     static let bgmTargetVolume: Float = 0.82
-    static let bgmLowVolume: Float = 0.50
+    static let bgmLowVolume: Float = 0.82
     static let coinVolume: Float = 0.32
     static let jumpVolume: Float = 0.28
     static let gameOverVolume: Float = 0.45
@@ -383,7 +383,9 @@ final class GameAudio {
         guard let player = bgmPlayer, !isAdActive, !isMuted, bgmVolume > 0.001 else { return }
         let base = lowVolume ? GameAudio.bgmLowVolume : GameAudio.bgmTargetVolume
         let target = base * bgmVolume
-        player.volume = target
+        if abs(player.volume - target) > 0.001 {
+            player.volume = target
+        }
         if !player.isPlaying {
             player.play()
         }
@@ -398,7 +400,7 @@ final class GameAudio {
         let target = volume * bgmVolume
         if fadeDuration > 0.05 {
             player.setVolume(target, fadeDuration: fadeDuration)
-        } else {
+        } else if abs(player.volume - target) > 0.001 {
             player.volume = target
         }
         if !player.isPlaying && isBGMPlayingRequested {

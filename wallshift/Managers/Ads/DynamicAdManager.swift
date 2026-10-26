@@ -99,7 +99,6 @@ final class DynamicAdManager {
     /// Викликається на початку кожного нового забігу
     func notifyRunStarted() {
         didWatchRewardedInCurrentRun = false
-        print("[DynamicAdManager] Run started. Session runs: \(sessionRunsCount), Pending attempts: \(pendingAttempts)/\(Config.targetAttemptsThreshold)")
     }
     
     /// Викликається при успішному перегляді добровільної реклами (Revive, Double Coins, тощо)

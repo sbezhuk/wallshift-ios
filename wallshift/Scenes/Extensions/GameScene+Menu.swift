@@ -31,7 +31,8 @@ extension GameScene {
         
         gameState = .menu
         isGameOver = false
-        hudNode.alpha = 0.0
+        hudNode.alpha = 1.0
+        hudNode.isHidden = true
         player.setReadyStance()
         
         // Запускаємо перший автоматичний стрибок через 1.8 с
@@ -259,62 +260,16 @@ extension GameScene {
             return
         }
         
-        // Анімація зникнення кнопки старту
-        if let playBtn = menu.childNode(withName: "menuPlayButton") {
-            playBtn.run(SKAction.sequence([
-                SKAction.scale(to: 0.92, duration: 0.08),
-                SKAction.group([
-                    SKAction.scale(to: 0.65, duration: 0.22),
-                    SKAction.fadeOut(withDuration: 0.22)
-                ])
-            ]))
-        }
+        // Швидке і плавне згасання меню як єдиного вузла для максимальної швидкодії
+        menu.run(SKAction.sequence([
+            SKAction.fadeOut(withDuration: 0.18),
+            SKAction.removeFromParent()
+        ]))
+        self.menuNode = nil
         
-        // Анімація злітання логотипу вгору
-        if let title = menu.childNode(withName: "menuTitle") {
-            title.run(SKAction.group([
-                SKAction.moveBy(x: 0, y: 50.0, duration: 0.32),
-                SKAction.fadeOut(withDuration: 0.32)
-            ]))
-        }
-        
-        // Анімація згасання картки статистики
-        if let card = menu.childNode(withName: "menuCard") {
-            card.run(SKAction.group([
-                SKAction.scale(to: 0.85, duration: 0.28),
-                SKAction.fadeOut(withDuration: 0.28)
-            ]))
-        }
-        
-        // Анімація згасання кнопки звуку
-        if let soundBtn = menu.childNode(withName: "menuSoundButton") {
-            soundBtn.run(SKAction.fadeOut(withDuration: 0.25))
-        }
-        
-        // Анімація згасання кнопки досягнень
-        if let achBtn = menu.childNode(withName: "menuAchievementsButton") {
-            achBtn.run(SKAction.fadeOut(withDuration: 0.25))
-        }
-        
-        // Анімація згасання кнопки маркету
-        if let shopBtn = menu.childNode(withName: "menuShopButton") {
-            shopBtn.run(SKAction.group([
-                SKAction.scale(to: 0.80, duration: 0.24),
-                SKAction.fadeOut(withDuration: 0.24)
-            ]))
-        }
-        
-        // Анімація згасання кнопки виходу
-        if let exitBtn = menu.childNode(withName: "menuExitButton") {
-            exitBtn.run(SKAction.group([
-                SKAction.scale(to: 0.80, duration: 0.24),
-                SKAction.fadeOut(withDuration: 0.24)
-            ]))
-        }
-        
-        // Анімовано зникає GUI, і ПІСЛЯ ЦЬОГО починає бігти персонаж!
+        // Запуск підйому після завершення згасання меню
         run(SKAction.sequence([
-            SKAction.wait(forDuration: 0.34),
+            SKAction.wait(forDuration: 0.20),
             SKAction.run { [weak self] in
                 self?.startClimb()
             }

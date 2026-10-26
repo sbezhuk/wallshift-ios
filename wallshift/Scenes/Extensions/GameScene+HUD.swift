@@ -17,6 +17,8 @@ extension GameScene {
         
         hudNode.zPosition = 100
         hudNode.position = .zero
+        hudNode.alpha = 1.0
+        hudNode.isHidden = true
         cameraNode.addChild(hudNode)
         
         // 1. Серця (життя) ліворуч зверху
