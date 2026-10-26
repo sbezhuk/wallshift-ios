@@ -561,19 +561,25 @@ final class GameScene: SKScene {
         spriteAdd.blendMode = .add
         warmContainer.addChild(spriteAdd)
         
-        let emitter = SKEmitterNode()
-        emitter.particleTexture = GameScene.sprayParticleTexture
-        emitter.particleBlendMode = .add
-        emitter.particleBirthRate = 1
-        emitter.numParticlesToEmit = 1
-        emitter.particleLifetime = 0.05
-        warmContainer.addChild(emitter)
+        // Повний прогрів обох типів частинок (монети та серця)
+        let dummyCoinSpray = PooledSprayNode(texture: GameScene.sprayParticleTexture, isHeart: false)
+        dummyCoinSpray.position = CGPoint(x: -5000, y: -5000)
+        dummyCoinSpray.trigger(at: CGPoint(x: -5000, y: -5000))
+        warmContainer.addChild(dummyCoinSpray)
         
-        // 2. Прогрів атласу гліфів шрифту для HUD ігрового процесу
-        let fontLabel = SKLabelNode(fontNamed: AppFont.name)
-        fontLabel.text = "0123456789+., -–xX:!?SCORECOINS"
-        fontLabel.fontSize = 24
-        warmContainer.addChild(fontLabel)
+        let dummyHeartSpray = PooledSprayNode(texture: GameScene.sprayParticleTexture, isHeart: true)
+        dummyHeartSpray.position = CGPoint(x: -5000, y: -5000)
+        dummyHeartSpray.trigger(at: CGPoint(x: -5000, y: -5000))
+        warmContainer.addChild(dummyHeartSpray)
+        
+        // 2. Прогрів атласу гліфів шрифту AppFont для ВСІХ розмірів шрифтів HUD та гри
+        let fontSizes: [CGFloat] = [25.0, 18.0, 17.0, 20.0, 46.0]
+        for fSize in fontSizes {
+            let fontLabel = SKLabelNode(fontNamed: AppFont.name)
+            fontLabel.text = "0123456789+., -–xX:!?SCORECOINS"
+            fontLabel.fontSize = fSize
+            warmContainer.addChild(fontLabel)
+        }
         
         addChild(warmContainer)
         
@@ -788,16 +794,18 @@ final class GameScene: SKScene {
                     clutchScoreThisRun = max(clutchScoreThisRun, score - (clutchScoreStart ?? score))
                 }
                 
-                // Оновлення прогресу досягнень у реальному часі
-                AchievementManager.shared.trackRunProgress(
-                    score: score,
-                    runJumps: runJumpsCount,
-                    runCoins: coinsCollected,
-                    tookDamageThisRun: tookDamageThisRun,
-                    fellIntoAbyssThisRun: fellIntoAbyssThisRun,
-                    usedReviveThisRun: hasUsedAdRevive,
-                    clutchScore: clutchScoreThisRun
-                )
+                // Оновлення прогресу досягнень у реальному часі кожні 5 очок (усуває надлишкове навантаження на кожному метрі)
+                if score % 5 == 0 {
+                    AchievementManager.shared.trackRunProgress(
+                        score: score,
+                        runJumps: runJumpsCount,
+                        runCoins: coinsCollected,
+                        tookDamageThisRun: tookDamageThisRun,
+                        fellIntoAbyssThisRun: fellIntoAbyssThisRun,
+                        usedReviveThisRun: hasUsedAdRevive,
+                        clutchScore: clutchScoreThisRun
+                    )
+                }
                 
                 // Сповіщення про проходження ювілейних відміток (кожні 100 очок)
                 let milestone = score / 100

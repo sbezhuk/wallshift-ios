@@ -195,20 +195,37 @@ final class GameAudio {
         }
     }
     
-    /// Попередній запуск нод відтворення звукових ефектів (усуває затримки та IPC блокування на перших стрибках)
+    /// Попередній запуск нод та прогрів аудіобуферів у тиші (усуває холодний старт DSP-конвертерів CoreAudio)
     private func prewarmAudioNodesInternal() {
         for node in jumpNodes {
+            node.volume = 0.0
+            if let buf = jumpBuffer {
+                node.scheduleBuffer(buf, at: nil, options: .interrupts, completionHandler: nil)
+            }
             if !node.isPlaying {
                 node.play()
             }
         }
         for node in coinNodes {
+            node.volume = 0.0
+            if let buf = coinBuffer {
+                node.scheduleBuffer(buf, at: nil, options: .interrupts, completionHandler: nil)
+            }
             if !node.isPlaying {
                 node.play()
             }
         }
+        gameOverNode.volume = 0.0
+        if let buf = gameOverBuffer {
+            gameOverNode.scheduleBuffer(buf, at: nil, options: .interrupts, completionHandler: nil)
+        }
         if !gameOverNode.isPlaying {
             gameOverNode.play()
+        }
+        
+        // Відновлюємо робочу гучність після завершення тестового беззвучного циклу
+        audioQueue.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.applySFXVolumeInternal()
         }
     }
     
