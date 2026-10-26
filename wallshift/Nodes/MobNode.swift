@@ -92,6 +92,22 @@ final class MobNode: SKSpriteNode {
     /// Текстури ходьби конкретного екземпляра моба відповідно до його типу
     private let activeWalkTextures: [SKTexture]
     
+    // Кеш екшенів ходьби для виключення виділення пам'яті під час спавну мобів
+    private static var walkActionCache: [ObjectIdentifier: SKAction] = [:]
+    
+    static func cachedWalkAction(for textures: [SKTexture]) -> SKAction? {
+        guard let first = textures.first else { return nil }
+        let key = ObjectIdentifier(first)
+        if let cached = walkActionCache[key] {
+            return cached
+        }
+        let action = SKAction.repeatForever(
+            SKAction.animate(with: textures, timePerFrame: Constants.timePerFrame, resize: false, restore: true)
+        )
+        walkActionCache[key] = action
+        return action
+    }
+    
     // MARK: - Initialization
     init(
         mobType: MobType = .patroller,
@@ -169,11 +185,9 @@ final class MobNode: SKSpriteNode {
     // MARK: - Patrol & Walk Animation
     /// Запуск циклу безперервного патрулювання між точкою А та точкою Б
     private func startPatrol() {
-        // 1. Анімація циклічної ходьби власного набору спрайтів моба
-        guard !activeWalkTextures.isEmpty else { return }
-        let walkAction = SKAction.repeatForever(
-            SKAction.animate(with: activeWalkTextures, timePerFrame: Constants.timePerFrame, resize: false, restore: true)
-        )
+        // 1. Анімація циклічної ходьби власного набору спрайтів моба (використовуємо кешований екшен)
+        guard !activeWalkTextures.isEmpty,
+              let walkAction = MobNode.cachedWalkAction(for: activeWalkTextures) else { return }
         run(walkAction, withKey: "walkAnimation")
         
         // 2. Механіка руху між точками А та Б

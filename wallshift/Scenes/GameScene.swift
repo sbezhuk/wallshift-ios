@@ -575,34 +575,35 @@ final class GameScene: SKScene {
         dummyHeartSpray.trigger(at: .zero)
         warmContainer.addChild(dummyHeartSpray)
         
-        // 3. Прогрів текстур мобів (патрульний 24 кадри, стрілець 24 кадри) — усуває мікролаг на 25-80 очках
-        if !cachedPatrollerTextures.isEmpty {
-            let patrollerSprite = SKSpriteNode(texture: cachedPatrollerTextures.first)
-            patrollerSprite.run(SKAction.animate(with: cachedPatrollerTextures, timePerFrame: 0.01))
-            warmContainer.addChild(patrollerSprite)
+        // 3. Повний паралельний прогрів УСІХ окремих кадрів мобів (патрульний 24 кадри, стрілець 24 кадри)
+        for tex in cachedPatrollerTextures {
+            let sprite = SKSpriteNode(texture: tex)
+            warmContainer.addChild(sprite)
         }
-        if !cachedShooterTextures.isEmpty {
-            let shooterSprite = SKSpriteNode(texture: cachedShooterTextures.first)
-            shooterSprite.run(SKAction.animate(with: cachedShooterTextures, timePerFrame: 0.01))
-            warmContainer.addChild(shooterSprite)
+        for tex in cachedShooterTextures {
+            let sprite = SKSpriteNode(texture: tex)
+            warmContainer.addChild(sprite)
         }
         
-        // 4. Прогрів текстур снарядів (вогняні/водяні стріли + світіння glow) — усуває лаг при першому пострілі
-        let arrowTextures = FireArrowNode.allTextures
-        if !arrowTextures.isEmpty {
-            let arrowSprite = SKSpriteNode(texture: arrowTextures.first)
-            arrowSprite.blendMode = .add
-            arrowSprite.colorBlendFactor = 1.0
-            arrowSprite.run(SKAction.animate(with: arrowTextures, timePerFrame: 0.01))
-            warmContainer.addChild(arrowSprite)
+        // 4. Повний паралельний прогрів УСІХ 16 кадрів стріл та світіння glow (із блендингом .add)
+        for tex in FireArrowNode.allTextures {
+            let sprite = SKSpriteNode(texture: tex)
+            sprite.blendMode = .add
+            sprite.colorBlendFactor = 1.0
+            warmContainer.addChild(sprite)
         }
         
-        // 5. Прогрів обертання монет (6 кадрів), сердець та тайлів скель/прірв
-        let coinTextures = CoinNode.textures(for: currentTheme)
-        if !coinTextures.isEmpty {
-            let coinSprite = SKSpriteNode(texture: coinTextures.first)
-            coinSprite.run(SKAction.animate(with: coinTextures, timePerFrame: 0.01))
-            warmContainer.addChild(coinSprite)
+        // 5. Повний прогрів обертання монет (6 кадрів), бігу героя (12 кадрів) та елементів скель
+        for tex in CoinNode.textures(for: currentTheme) {
+            let sprite = SKSpriteNode(texture: tex)
+            warmContainer.addChild(sprite)
+        }
+        let playerFrames = (0..<currentTheme.heroRunCount).map {
+            SKTexture(imageNamed: "\(currentTheme.heroRunPrefix)\($0)")
+        }
+        for tex in playerFrames {
+            let sprite = SKSpriteNode(texture: tex)
+            warmContainer.addChild(sprite)
         }
         let heartSprite = SKSpriteNode(texture: cachedHeartTexture)
         let cliffLow = SKSpriteNode(texture: cachedCliffLowerTexture)
@@ -632,9 +633,9 @@ final class GameScene: SKScene {
         
         cameraNode.addChild(warmContainer)
         
-        // Контейнер рендериться 1.2 с для гарантованої компіляції Metal PSO та VRAM-кешування, потім самовидаляється
+        // Контейнер рендериться 2.0 с за фоном для гарантованої компіляції Metal PSO та VRAM-кешування, потім самовидаляється
         warmContainer.run(SKAction.sequence([
-            SKAction.wait(forDuration: 1.2),
+            SKAction.wait(forDuration: 2.0),
             SKAction.removeFromParent()
         ]))
     }
@@ -752,11 +753,10 @@ final class GameScene: SKScene {
 
     /// Запуск бігу героя та підйому камери з тієї стіни, на якій він стоїть
     func startClimb() {
-        // Видаляємо залишки меню та warmup-контейнер до першого ігрового фрейму
+        // Видаляємо залишки меню до першого ігрового фрейму
         menuNode?.removeFromParent()
         menuNode = nil
         removeAction(forKey: "menuAutoJump")
-        cameraNode.childNode(withName: "metalWarmContainer")?.removeFromParent()
         
         // Відображення ігрового HUD (життя, рахунок, монети)
         hudNode.alpha = 1.0
