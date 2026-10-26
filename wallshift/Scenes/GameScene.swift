@@ -552,7 +552,7 @@ final class GameScene: SKScene {
         }
     }
     
-    /// Попередній прогрів конвеєра рендерингу Metal (PSO) та атласу шрифтів до початку підйому (0 мікрофризів)
+    /// Попередній прогрів конвеєра рендерингу Metal (PSO), атласу шрифтів та текстур мобів/снарядів (0 мікрофризів)
     func prewarmMetalRenderPipelines() {
         let warmContainer = SKNode()
         warmContainer.name = "metalWarmContainer"
@@ -564,7 +564,7 @@ final class GameScene: SKScene {
         spriteAdd.blendMode = .add
         warmContainer.addChild(spriteAdd)
         
-        // Повний прогрів обох типів частинок (монети та серця)
+        // 2. Повний прогрів обох типів частинок (монети та серця)
         let dummyCoinSpray = PooledSprayNode(texture: GameScene.sprayParticleTexture, isHeart: false)
         dummyCoinSpray.position = .zero
         dummyCoinSpray.trigger(at: .zero)
@@ -575,20 +575,66 @@ final class GameScene: SKScene {
         dummyHeartSpray.trigger(at: .zero)
         warmContainer.addChild(dummyHeartSpray)
         
-        // 2. Прогрів атласу гліфів шрифту AppFont для ВСІХ розмірів шрифтів HUD та гри
+        // 3. Прогрів текстур мобів (патрульний 24 кадри, стрілець 24 кадри) — усуває мікролаг на 25-80 очках
+        if !cachedPatrollerTextures.isEmpty {
+            let patrollerSprite = SKSpriteNode(texture: cachedPatrollerTextures.first)
+            patrollerSprite.run(SKAction.animate(with: cachedPatrollerTextures, timePerFrame: 0.01))
+            warmContainer.addChild(patrollerSprite)
+        }
+        if !cachedShooterTextures.isEmpty {
+            let shooterSprite = SKSpriteNode(texture: cachedShooterTextures.first)
+            shooterSprite.run(SKAction.animate(with: cachedShooterTextures, timePerFrame: 0.01))
+            warmContainer.addChild(shooterSprite)
+        }
+        
+        // 4. Прогрів текстур снарядів (вогняні/водяні стріли + світіння glow) — усуває лаг при першому пострілі
+        let arrowTextures = FireArrowNode.allTextures
+        if !arrowTextures.isEmpty {
+            let arrowSprite = SKSpriteNode(texture: arrowTextures.first)
+            arrowSprite.blendMode = .add
+            arrowSprite.colorBlendFactor = 1.0
+            arrowSprite.run(SKAction.animate(with: arrowTextures, timePerFrame: 0.01))
+            warmContainer.addChild(arrowSprite)
+        }
+        
+        // 5. Прогрів обертання монет (6 кадрів), сердець та тайлів скель/прірв
+        let coinTextures = CoinNode.textures(for: currentTheme)
+        if !coinTextures.isEmpty {
+            let coinSprite = SKSpriteNode(texture: coinTextures.first)
+            coinSprite.run(SKAction.animate(with: coinTextures, timePerFrame: 0.01))
+            warmContainer.addChild(coinSprite)
+        }
+        let heartSprite = SKSpriteNode(texture: cachedHeartTexture)
+        let cliffLow = SKSpriteNode(texture: cachedCliffLowerTexture)
+        let cliffUp = SKSpriteNode(texture: cachedCliffUpperTexture)
+        let wallDirt = SKSpriteNode(texture: cachedWallDirtTexture)
+        let wallRock = SKSpriteNode(texture: cachedWallRockTexture)
+        warmContainer.addChild(heartSprite)
+        warmContainer.addChild(cliffLow)
+        warmContainer.addChild(cliffUp)
+        warmContainer.addChild(wallDirt)
+        warmContainer.addChild(wallRock)
+        
+        // 6. Прогрів атласу гліфів шрифту AppFont для ВСІХ розмірів шрифтів HUD та гри + анімація пульсації очок
         let fontSizes: [CGFloat] = [25.0, 18.0, 17.0, 20.0, 16.0, 23.0, 30.0, 46.0]
         for fSize in fontSizes {
             let fontLabel = SKLabelNode(fontNamed: AppFont.name)
             fontLabel.text = "0123456789+., -–xX:!?SCORECOINS BEST"
             fontLabel.fontSize = fSize
+            if fSize == 25.0 {
+                fontLabel.run(SKAction.sequence([
+                    SKAction.scale(to: 1.45, duration: 0.05),
+                    SKAction.scale(to: 1.0, duration: 0.05)
+                ]))
+            }
             warmContainer.addChild(fontLabel)
         }
         
         cameraNode.addChild(warmContainer)
         
-        // Контейнер рендериться 1.0 с для гарантованої компіляції Metal PSO та кешування шрифтів, потім самовидаляється
+        // Контейнер рендериться 1.2 с для гарантованої компіляції Metal PSO та VRAM-кешування, потім самовидаляється
         warmContainer.run(SKAction.sequence([
-            SKAction.wait(forDuration: 1.0),
+            SKAction.wait(forDuration: 1.2),
             SKAction.removeFromParent()
         ]))
     }
@@ -799,8 +845,8 @@ final class GameScene: SKScene {
                     clutchScoreThisRun = max(clutchScoreThisRun, score - (clutchScoreStart ?? score))
                 }
                 
-                // Оновлення прогресу досягнень у реальному часі кожні 5 очок (усуває надлишкове навантаження на кожному метрі)
-                if score % 5 == 0 {
+                // Оновлення прогресу досягнень у реальному часі кожні 25 очок (усуває надлишкове навантаження на головний потік)
+                if score % 25 == 0 {
                     AchievementManager.shared.trackRunProgress(
                         score: score,
                         runJumps: runJumpsCount,
