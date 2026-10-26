@@ -46,6 +46,13 @@ final class PlayerNode: SKSpriteNode {
     
     // Кешовані текстури анімації бігу поточного персонажа
     private var activeRunningTextures: [SKTexture] = []
+    private var cachedRunAction: SKAction?
+    
+    // Пре-алокована дія амортизації при приземленні (0 алокацій під час гри)
+    private static let landingCushionAction: SKAction = SKAction.sequence([
+        SKAction.scaleY(to: 0.82, duration: 0.03),
+        SKAction.scaleY(to: 1.0, duration: 0.06)
+    ])
     
     // MARK: - Initialization
     init(prefix: String = "run_", frameCount: Int = 12) {
@@ -57,6 +64,9 @@ final class PlayerNode: SKSpriteNode {
             textures.append(texture)
         }
         self.activeRunningTextures = textures
+        self.cachedRunAction = SKAction.repeatForever(
+            SKAction.animate(with: textures, timePerFrame: Constants.timePerFrame, resize: false, restore: false)
+        )
         let defaultTexture = textures.first ?? SKTexture()
         super.init(texture: defaultTexture, color: .clear, size: Constants.visualSize)
         
@@ -87,6 +97,9 @@ final class PlayerNode: SKSpriteNode {
             textures.append(texture)
         }
         self.activeRunningTextures = textures
+        self.cachedRunAction = SKAction.repeatForever(
+            SKAction.animate(with: textures, timePerFrame: Constants.timePerFrame, resize: false, restore: false)
+        )
         if let first = textures.first {
             self.texture = first
         }
@@ -128,12 +141,8 @@ final class PlayerNode: SKSpriteNode {
     
     /// Запуск циклічної анімації бігу по стіні
     func startRunningAnimation() {
-        guard !activeRunningTextures.isEmpty else { return }
-        
+        guard let runAction = cachedRunAction else { return }
         currentState = .running
-        let runAction = SKAction.repeatForever(
-            SKAction.animate(with: activeRunningTextures, timePerFrame: Constants.timePerFrame, resize: false, restore: false)
-        )
         run(runAction, withKey: "runAnimation")
     }
     
@@ -200,11 +209,7 @@ final class PlayerNode: SKSpriteNode {
             }
             
             // Амортизація ногами (squash & stretch) при ударі об стіну
-            let landingCushion = SKAction.sequence([
-                SKAction.scaleY(to: 0.82, duration: 0.03),
-                SKAction.scaleY(to: 1.0, duration: 0.06)
-            ])
-            self.run(landingCushion, withKey: "landingCushion")
+            self.run(PlayerNode.landingCushionAction, withKey: "landingCushion")
             
             completion()
         }
@@ -249,11 +254,7 @@ final class PlayerNode: SKSpriteNode {
             self.color = .clear
             self.colorBlendFactor = 0.0
             
-            let landingCushion = SKAction.sequence([
-                SKAction.scaleY(to: 0.82, duration: 0.03),
-                SKAction.scaleY(to: 1.0, duration: 0.06)
-            ])
-            self.run(landingCushion, withKey: "landingCushion")
+            self.run(PlayerNode.landingCushionAction, withKey: "landingCushion")
             
             completion?()
         }

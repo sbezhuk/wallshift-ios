@@ -207,6 +207,13 @@ final class GameScene: SKScene {
         texturesToPreload.append(contentsOf: cachedSignpostTextures)
         texturesToPreload.append(contentsOf: cachedPatrollerTextures)
         texturesToPreload.append(contentsOf: cachedShooterTextures)
+        texturesToPreload.append(contentsOf: CoinNode.textures(for: theme))
+        texturesToPreload.append(contentsOf: FireArrowNode.allTextures)
+        let playerFrames = (0..<PlayerNode.Constants.runningFrameCount).map {
+            SKTexture(imageNamed: "\(PlayerNode.Constants.runningFramePrefix)\($0)")
+        }
+        texturesToPreload.append(contentsOf: playerFrames)
+        texturesToPreload.append(SKTexture(imageNamed: "coin"))
         
         SKTexture.preload(texturesToPreload) {}
     }
@@ -476,6 +483,7 @@ final class GameScene: SKScene {
         setupPlayer()
         setupHUD()
         setupProceduralTrack()
+        prewarmMetalRenderPipelines()
         
         // Підписка на події розблокування досягнень (оновлення бейджика в меню)
         AchievementManager.shared.checkAndPerformWeeklyResetIfNeeded()
@@ -540,6 +548,39 @@ final class GameScene: SKScene {
             addChild(node)
             heartSprayPool.append(node)
         }
+    }
+    
+    /// Попередній прогрів конвеєра рендерингу Metal (PSO) та атласу шрифтів до початку підйому (0 мікрофризів)
+    func prewarmMetalRenderPipelines() {
+        let warmContainer = SKNode()
+        warmContainer.position = CGPoint(x: -5000, y: -5000)
+        warmContainer.alpha = 0.001
+        
+        // 1. Прогрів шейдерів Metal для звичайного та адитивного блендингу
+        let spriteAdd = SKSpriteNode(texture: GameScene.sprayParticleTexture)
+        spriteAdd.blendMode = .add
+        warmContainer.addChild(spriteAdd)
+        
+        let emitter = SKEmitterNode()
+        emitter.particleTexture = GameScene.sprayParticleTexture
+        emitter.particleBlendMode = .add
+        emitter.particleBirthRate = 1
+        emitter.numParticlesToEmit = 1
+        emitter.particleLifetime = 0.05
+        warmContainer.addChild(emitter)
+        
+        // 2. Прогрів атласу гліфів шрифту для HUD ігрового процесу
+        let fontLabel = SKLabelNode(fontNamed: AppFont.name)
+        fontLabel.text = "0123456789+., -–xX:!?SCORECOINS"
+        fontLabel.fontSize = 24
+        warmContainer.addChild(fontLabel)
+        
+        addChild(warmContainer)
+        
+        warmContainer.run(SKAction.sequence([
+            SKAction.wait(forDuration: 0.1),
+            SKAction.removeFromParent()
+        ]))
     }
     
     func setupAudio() {
@@ -803,7 +844,7 @@ final class GameScene: SKScene {
         }
         
         // Безперервне поповнення доріжки наперед та очищення старих тайлів позаду
-        buildTrack(upTo: cameraNode.position.y + (size.height * 1.5))
+        buildTrack(upTo: cameraNode.position.y + (size.height * 2.0))
         cleanupPassedTrack()
     }
     

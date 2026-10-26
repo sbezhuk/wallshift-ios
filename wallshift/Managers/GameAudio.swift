@@ -165,6 +165,7 @@ final class GameAudio {
             self.applySFXVolumeInternal()
             self.applyBGMVolumeInternal()
             self.ensureEngineRunningInternal()
+            self.prewarmAudioNodesInternal()
         }
     }
     
@@ -180,8 +181,26 @@ final class GameAudio {
         guard !engine.isRunning else { return }
         do {
             try engine.start()
+            prewarmAudioNodesInternal()
         } catch {
             print("[GameAudio] Engine restart error: \(error)")
+        }
+    }
+    
+    /// Попередній запуск нод відтворення звукових ефектів (усуває затримки та IPC блокування на перших стрибках)
+    private func prewarmAudioNodesInternal() {
+        for node in jumpNodes {
+            if !node.isPlaying {
+                node.play()
+            }
+        }
+        for node in coinNodes {
+            if !node.isPlaying {
+                node.play()
+            }
+        }
+        if !gameOverNode.isPlaying {
+            gameOverNode.play()
         }
     }
     
@@ -393,12 +412,13 @@ final class GameAudio {
             self.cancelFadeTimer()
             self.ensureBGMPlayingInternal()
             
-            if fadeDuration <= 0.04 {
+            let startVol = self.bgmPlayerNode.volume
+            let diff = target - startVol
+            
+            if fadeDuration <= 0.05 || abs(diff) < 0.02 {
                 self.bgmPlayerNode.volume = target
             } else {
-                let startVol = self.bgmPlayerNode.volume
-                let diff = target - startVol
-                let steps = 10
+                let steps = max(3, min(8, Int(fadeDuration / 0.1)))
                 let interval = fadeDuration / Double(steps)
                 var currentStep = 0
                 

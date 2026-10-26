@@ -61,6 +61,11 @@ final class FireArrowNode: SKSpriteNode {
         return SKTexture(image: image)
     }()
     
+    /// Усі текстури снарядів та світіння для попереднього прогріву у VRAM
+    static var allTextures: [SKTexture] {
+        return fireArrowTextures + waterArrowTextures + [glowTexture]
+    }
+    
     private var activeTextures: [SKTexture] {
         return projectileType == .water ? FireArrowNode.waterArrowTextures : FireArrowNode.fireArrowTextures
     }

@@ -495,8 +495,8 @@ extension GameScene {
         nextHeartY = currentLeftY + randomHeartDistance()
         nextCoinPatternY = currentLeftY + 160.0
         
-        // Добудовуємо каньйон наперед на 1.5 екрана вперед за поточними формулами складності
-        buildTrack(upTo: cameraNode.position.y + (size.height * 1.5))
+        // Добудовуємо каньйон наперед на 2.0 екрана вперед за поточними формулами складності
+        buildTrack(upTo: cameraNode.position.y + (size.height * 2.0))
         
         // 9. Відроджуємо персонажа на гарантовано монолітній скелі
         let onLeft = player.isOnLeftWall
