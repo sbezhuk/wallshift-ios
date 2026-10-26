@@ -510,6 +510,7 @@ final class GameScene: SKScene {
             fellIntoAbyssThisRun = false
             player.startRunningAnimation()
             hudNode.alpha = 1.0
+            hudNode.isHidden = false
             startBGM(lowVolume: false)
         }
     }
@@ -554,8 +555,9 @@ final class GameScene: SKScene {
     /// Попередній прогрів конвеєра рендерингу Metal (PSO) та атласу шрифтів до початку підйому (0 мікрофризів)
     func prewarmMetalRenderPipelines() {
         let warmContainer = SKNode()
-        warmContainer.position = CGPoint(x: -5000, y: -5000)
-        warmContainer.alpha = 0.001
+        warmContainer.name = "metalWarmContainer"
+        warmContainer.position = .zero
+        warmContainer.zPosition = -100 // Позаду фону (-10), гарантовано всередині огляду камери (SpriteKit не скидає через culling)
         
         // 1. Прогрів шейдерів Metal для звичайного та адитивного блендингу
         let spriteAdd = SKSpriteNode(texture: GameScene.sprayParticleTexture)
@@ -564,28 +566,29 @@ final class GameScene: SKScene {
         
         // Повний прогрів обох типів частинок (монети та серця)
         let dummyCoinSpray = PooledSprayNode(texture: GameScene.sprayParticleTexture, isHeart: false)
-        dummyCoinSpray.position = CGPoint(x: -5000, y: -5000)
-        dummyCoinSpray.trigger(at: CGPoint(x: -5000, y: -5000))
+        dummyCoinSpray.position = .zero
+        dummyCoinSpray.trigger(at: .zero)
         warmContainer.addChild(dummyCoinSpray)
         
         let dummyHeartSpray = PooledSprayNode(texture: GameScene.sprayParticleTexture, isHeart: true)
-        dummyHeartSpray.position = CGPoint(x: -5000, y: -5000)
-        dummyHeartSpray.trigger(at: CGPoint(x: -5000, y: -5000))
+        dummyHeartSpray.position = .zero
+        dummyHeartSpray.trigger(at: .zero)
         warmContainer.addChild(dummyHeartSpray)
         
         // 2. Прогрів атласу гліфів шрифту AppFont для ВСІХ розмірів шрифтів HUD та гри
-        let fontSizes: [CGFloat] = [25.0, 18.0, 17.0, 20.0, 46.0]
+        let fontSizes: [CGFloat] = [25.0, 18.0, 17.0, 20.0, 16.0, 23.0, 30.0, 46.0]
         for fSize in fontSizes {
             let fontLabel = SKLabelNode(fontNamed: AppFont.name)
-            fontLabel.text = "0123456789+., -–xX:!?SCORECOINS"
+            fontLabel.text = "0123456789+., -–xX:!?SCORECOINS BEST"
             fontLabel.fontSize = fSize
             warmContainer.addChild(fontLabel)
         }
         
-        addChild(warmContainer)
+        cameraNode.addChild(warmContainer)
         
+        // Контейнер рендериться 1.0 с для гарантованої компіляції Metal PSO та кешування шрифтів, потім самовидаляється
         warmContainer.run(SKAction.sequence([
-            SKAction.wait(forDuration: 0.1),
+            SKAction.wait(forDuration: 1.0),
             SKAction.removeFromParent()
         ]))
     }
@@ -703,9 +706,11 @@ final class GameScene: SKScene {
 
     /// Запуск бігу героя та підйому камери з тієї стіни, на якій він стоїть
     func startClimb() {
+        // Видаляємо залишки меню та warmup-контейнер до першого ігрового фрейму
         menuNode?.removeFromParent()
         menuNode = nil
         removeAction(forKey: "menuAutoJump")
+        cameraNode.childNode(withName: "metalWarmContainer")?.removeFromParent()
         
         // Відображення ігрового HUD (життя, рахунок, монети)
         hudNode.alpha = 1.0
@@ -721,11 +726,9 @@ final class GameScene: SKScene {
         gameState = .playing
         hasPlayedGameOverSound = false
         runStartTime = CACurrentMediaTime()
-        DynamicAdManager.shared.notifyRunStarted()
         lastUpdateTime = 0
         
         // Скидання статистики поточного забігу для досягнень
-        AchievementManager.shared.startNewRun()
         runJumpsCount = 0
         tookDamageThisRun = false
         fellIntoAbyssThisRun = false

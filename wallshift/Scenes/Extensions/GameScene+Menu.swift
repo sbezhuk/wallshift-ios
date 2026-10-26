@@ -255,6 +255,10 @@ extension GameScene {
         
         playJumpSound()
         
+        // Ініціалізація статистики забігу заздалегідь під час згасання меню, щоб не навантажувати перший кадр гри
+        AchievementManager.shared.startNewRun()
+        DynamicAdManager.shared.notifyRunStarted()
+        
         guard let menu = menuNode else {
             startClimb()
             return
