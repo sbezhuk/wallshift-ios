@@ -726,7 +726,7 @@ final class GameScene: SKScene {
         
         // Піднімаємо гучність фонової музики до повного ігрового рівня
         if !isMuted {
-            GameAudio.shared.setBGMVolume(GameAudio.bgmTargetVolume, fadeDuration: 0.6)
+            GameAudio.shared.startBGM(lowVolume: false)
         }
     }
     

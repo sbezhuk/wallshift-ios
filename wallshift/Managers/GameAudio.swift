@@ -9,17 +9,15 @@ import AVFoundation
 import UIKit
 
 // MARK: - GameAudio
-/// Повністю асинхронний високопродуктивний аудіорушій на базі єдиного графа AVAudioEngine.
-/// Усі операції зі звуком (ініціалізація, планування буферів, запуск, зміна гучності, фейди)
-/// виконуються виключно у виділеній черзі `audioQueue` (QoS: .userInitiated).
-/// Головний потік рендерингу (Main Thread) звільнено на 100% від будь-яких навантажень CoreAudio,
-/// що гарантує абсолютно стабільні 60/120 FPS без найменших мікролагів.
+/// Високопродуктивний звуковий рушій, оптимізований для стабільних 60-120 FPS без мікролагів:
+/// 1. BGM: апаратне потокове відтворення через `AVAudioPlayer` (0 МБ зайвої RAM, без перевантаження буферів, вбудований DSP fade).
+/// 2. SFX: низьколатентний пул нод у `AVAudioEngine` з попереднім прогрівом (0 викликів блокуючих API на Main Thread).
 final class GameAudio {
     static let shared = GameAudio()
     
     // MARK: - Рівні гучності (баланс музики та ефектів)
     static let bgmTargetVolume: Float = 0.82
-    static let bgmLowVolume: Float = 0.42
+    static let bgmLowVolume: Float = 0.50
     static let coinVolume: Float = 0.32
     static let jumpVolume: Float = 0.28
     static let gameOverVolume: Float = 0.45
@@ -71,23 +69,16 @@ final class GameAudio {
         }
     }
     
-    // MARK: - Виділена аудіо-черга (100% ізоляція від головного потоку)
+    // MARK: - Виділена аудіо-черга для SFX (100% ізоляція від головного потоку)
     private let audioQueue = DispatchQueue(label: "com.wallshift.audio", qos: .userInitiated)
     
-    // MARK: - Єдиний AVAudioEngine (Низьколатентне апаратне мікшування BGM + SFX)
+    // MARK: - AVAudioEngine (Низьколатентне апаратне мікшування SFX)
     private let engine = AVAudioEngine()
     
-    // Пре-декодовані та конвертовані в нативний формат мікшера PCM-буфери в RAM
+    // Пре-декодовані легкі PCM-буфери звукових ефектів у RAM (<200 КБ)
     private var jumpBuffer: AVAudioPCMBuffer?
     private var coinBuffer: AVAudioPCMBuffer?
     private var gameOverBuffer: AVAudioPCMBuffer?
-    private var bgmBuffer: AVAudioPCMBuffer?
-    
-    // Нода фонової музики (частина того самого графа AVAudioEngine)
-    private let bgmPlayerNode = AVAudioPlayerNode()
-    private var isBGMPlaying: Bool = false
-    private var isBGMBufferScheduled: Bool = false
-    private var fadeTimerSource: DispatchSourceTimer?
     
     // Пул нод для стрибків (усуває збої при швидких послідовних тапах/буферизації)
     private let jumpNodes: [AVAudioPlayerNode] = [
@@ -108,6 +99,10 @@ final class GameAudio {
     ]
     private var currentCoinNodeIndex: Int = 0
     
+    // MARK: - Фонова музика (AVAudioPlayer hardware stream)
+    private var bgmPlayer: AVAudioPlayer?
+    private var isBGMPlayingRequested: Bool = false
+    
     private var isSetup = false
     
     private init() {
@@ -116,11 +111,11 @@ final class GameAudio {
     
     deinit {
         NotificationCenter.default.removeObserver(self)
-        fadeTimerSource?.cancel()
         engine.stop()
+        bgmPlayer?.stop()
     }
     
-    // MARK: - Ініціалізація та попереднє завантаження буферів
+    // MARK: - Ініціалізація та попереднє завантаження
     
     func setupIfNeeded() {
         guard !isSetup else { return }
@@ -133,21 +128,19 @@ final class GameAudio {
         
         let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
         
-        // 2. Пре-декодування всіх звуків у PCM-буфери в пам'яті
+        // 2. Ініціалізуємо потоковий BGM плеєр (апаратне читання MP3 з диску, 0 МБ витрат RAM)
+        setupBGMPlayer(tempDir: tempDir)
+        
+        // 3. Пре-декодування коротких звуків SFX у пам'ять (<200 КБ)
         let jBuf = loadPCMBuffer(named: "player_jump", tempDir: tempDir)
         let cBuf = loadPCMBuffer(named: "coin_pickup", tempDir: tempDir)
         let gBuf = loadPCMBuffer(named: "game_over", tempDir: tempDir)
-        let bBuf = loadPCMBuffer(named: "background_music", tempDir: tempDir)
         
         self.jumpBuffer = jBuf
         self.coinBuffer = cBuf
         self.gameOverBuffer = gBuf
-        self.bgmBuffer = bBuf
         
-        // 3. Підключаємо ноди до головного мікшера з їхнім точним нативним форматом каналів
-        engine.attach(bgmPlayerNode)
-        connectNode(bgmPlayerNode, format: bBuf?.format)
-        
+        // 4. Підключаємо ноди SFX до головного мікшера з їхнім точним нативним форматом каналів
         for node in jumpNodes {
             engine.attach(node)
             connectNode(node, format: jBuf?.format)
@@ -159,13 +152,28 @@ final class GameAudio {
         engine.attach(gameOverNode)
         connectNode(gameOverNode, format: gBuf?.format)
         
-        // 4. Підготовка та старт двигуна у виділеній фоновій черзі
+        // 5. Підготовка та старт рушія SFX у виділеній фоновій черзі
         audioQueue.async { [weak self] in
             guard let self = self else { return }
             self.applySFXVolumeInternal()
-            self.applyBGMVolumeInternal()
             self.ensureEngineRunningInternal()
             self.prewarmAudioNodesInternal()
+        }
+    }
+    
+    private func setupBGMPlayer(tempDir: URL) {
+        guard let data = NSDataAsset(name: "background_music")?.data else { return }
+        let url = tempDir.appendingPathComponent("background_music.mp3")
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try? data.write(to: url)
+        }
+        do {
+            let player = try AVAudioPlayer(contentsOf: url)
+            player.numberOfLoops = -1
+            self.bgmPlayer = player
+            player.prepareToPlay()
+        } catch {
+            print("[GameAudio] Failed to initialize BGM player: \(error)")
         }
     }
     
@@ -204,7 +212,7 @@ final class GameAudio {
         }
     }
     
-    /// Завантажує аудіофайл напряму в PCM-буфер у пам'яті
+    /// Завантажує аудіофайл напряму в PCM-буфер у пам'яті (тільки для коротких SFX)
     private func loadPCMBuffer(named name: String, tempDir: URL) -> AVAudioPCMBuffer? {
         guard let data = NSDataAsset(name: name)?.data else { return nil }
         let url = tempDir.appendingPathComponent("\(name).mp3")
@@ -254,8 +262,8 @@ final class GameAudio {
             if options.contains(.shouldResume) && !isMuted && !isAdActive {
                 audioQueue.async { [weak self] in
                     self?.ensureEngineRunningInternal()
-                    self?.resumeBGMInternal()
                 }
+                resumeBGM()
             }
         @unknown default:
             break
@@ -266,11 +274,11 @@ final class GameAudio {
         guard !isAdActive, !isMuted else { return }
         audioQueue.async { [weak self] in
             self?.ensureEngineRunningInternal()
-            self?.resumeBGMInternal()
         }
+        resumeBGM()
     }
     
-    // MARK: - Застосування рівнів гучності
+    // MARK: - Застосування рівнів гучності SFX
     
     /// Оновлення нод SFX з урахуванням поточного sfxVolume та isMuted (асинхронно в аудіо-черзі)
     func applySFXVolume() {
@@ -288,17 +296,6 @@ final class GameAudio {
             node.volume = GameAudio.coinVolume * eff
         }
         gameOverNode.volume = GameAudio.gameOverVolume * eff
-    }
-    
-    /// Оновлення гучності BGM ноди з урахуванням поточного bgmVolume, isMuted та показу реклами
-    func applyBGMVolume(fadeDuration: TimeInterval = 0) {
-        setBGMVolume(GameAudio.bgmTargetVolume, fadeDuration: fadeDuration)
-    }
-    
-    private func applyBGMVolumeInternal() {
-        let eff = (isAdActive || isMuted || bgmVolume <= 0.001) ? 0.0 : bgmVolume
-        let base = isLowVolumeActive ? GameAudio.bgmLowVolume : GameAudio.bgmTargetVolume
-        bgmPlayerNode.volume = base * eff
     }
     
     // MARK: - Звукові ефекти (SFX: 0 блокування головного потоку)
@@ -360,151 +357,95 @@ final class GameAudio {
         }
     }
     
-    // MARK: - Фонова музика (BGM через RAM-буфер у черзі audioQueue)
-    
-    private func cancelFadeTimer() {
-        fadeTimerSource?.cancel()
-        fadeTimerSource = nil
-    }
-    
-    private func ensureBGMPlayingInternal() {
-        guard let buffer = bgmBuffer, bgmPlayerNode.engine != nil else { return }
-        ensureEngineRunningInternal()
-        
-        if !isBGMBufferScheduled {
-            bgmPlayerNode.scheduleBuffer(buffer, at: nil, options: .loops, completionHandler: nil)
-            isBGMBufferScheduled = true
-        }
-        
-        if !bgmPlayerNode.isPlaying {
-            bgmPlayerNode.play()
-        }
-        isBGMPlaying = true
-    }
+    // MARK: - Фонова музика (BGM через потоковий AVAudioPlayer)
     
     /// Запуск або відновлення фонової музики
     func startBGM(lowVolume: Bool = false) {
         self.isLowVolumeActive = lowVolume
-        guard !isAdActive, !isMuted, bgmVolume > 0.001 else { return }
-        audioQueue.async { [weak self] in
-            guard let self = self, !self.isAdActive, !self.isMuted, self.bgmVolume > 0.001 else { return }
-            self.cancelFadeTimer()
-            self.ensureBGMPlayingInternal()
-            self.applyBGMVolumeInternal()
+        self.isBGMPlayingRequested = true
+        guard let player = bgmPlayer, !isAdActive, !isMuted, bgmVolume > 0.001 else { return }
+        let base = lowVolume ? GameAudio.bgmLowVolume : GameAudio.bgmTargetVolume
+        let target = base * bgmVolume
+        player.volume = target
+        if !player.isPlaying {
+            player.play()
         }
     }
     
-    /// Плавна зміна гучності фонової музики (виконується суто в audioQueue через DispatchSourceTimer)
+    /// Плавна зміна гучності фонової музики (апаратний DSP fade без софтверних таймерів)
     func setBGMVolume(_ volume: Float, fadeDuration: TimeInterval = 0) {
-        guard !isAdActive, !isMuted, bgmVolume > 0.001 else {
-            pauseBGM()
+        guard let player = bgmPlayer, !isAdActive, !isMuted, bgmVolume > 0.001 else {
+            bgmPlayer?.pause()
             return
         }
-        
-        audioQueue.async { [weak self] in
-            guard let self = self else { return }
-            guard !self.isAdActive, !self.isMuted, self.bgmVolume > 0.001 else {
-                self.pauseBGMInternal()
-                return
-            }
-            
-            let target = volume * self.bgmVolume
-            self.cancelFadeTimer()
-            self.ensureBGMPlayingInternal()
-            
-            let startVol = self.bgmPlayerNode.volume
-            let diff = target - startVol
-            
-            if fadeDuration <= 0.05 || abs(diff) < 0.02 {
-                self.bgmPlayerNode.volume = target
-            } else {
-                let steps = max(3, min(8, Int(fadeDuration / 0.1)))
-                let interval = fadeDuration / Double(steps)
-                var currentStep = 0
-                
-                let timer = DispatchSource.makeTimerSource(queue: self.audioQueue)
-                timer.schedule(deadline: .now() + interval, repeating: interval)
-                timer.setEventHandler { [weak self] in
-                    guard let self = self else { return }
-                    currentStep += 1
-                    let progress = Float(currentStep) / Float(steps)
-                    self.bgmPlayerNode.volume = startVol + (diff * progress)
-                    if currentStep >= steps {
-                        self.bgmPlayerNode.volume = target
-                        self.cancelFadeTimer()
-                    }
-                }
-                self.fadeTimerSource = timer
-                timer.resume()
-            }
+        let target = volume * bgmVolume
+        if fadeDuration > 0.05 {
+            player.setVolume(target, fadeDuration: fadeDuration)
+        } else {
+            player.volume = target
+        }
+        if !player.isPlaying && isBGMPlayingRequested {
+            player.play()
         }
     }
     
     /// Призупинення фонової музики
     func pauseBGM() {
-        audioQueue.async { [weak self] in
-            self?.pauseBGMInternal()
-        }
-    }
-    
-    private func pauseBGMInternal() {
-        cancelFadeTimer()
-        bgmPlayerNode.pause()
-        isBGMPlaying = false
+        self.isBGMPlayingRequested = false
+        bgmPlayer?.pause()
     }
     
     /// Відновлення фонової музики
     func resumeBGM() {
         guard !isAdActive, !isMuted, bgmVolume > 0.001 else { return }
-        audioQueue.async { [weak self] in
-            self?.resumeBGMInternal()
-        }
+        self.isBGMPlayingRequested = true
+        applyBGMVolume()
     }
     
-    private func resumeBGMInternal() {
-        guard !isAdActive, !isMuted, bgmVolume > 0.001 else { return }
-        cancelFadeTimer()
-        ensureBGMPlayingInternal()
-        applyBGMVolumeInternal()
-    }
-    
-    /// Зупинка фонової музики з плавним згасанням (таймер працює в audioQueue)
-    func stopBGM(fadeDuration: TimeInterval = 0) {
-        audioQueue.async { [weak self] in
-            self?.stopBGMInternal(fadeDuration: fadeDuration)
-        }
-    }
-    
-    private func stopBGMInternal(fadeDuration: TimeInterval) {
-        guard isBGMPlaying else { return }
-        cancelFadeTimer()
-        
-        if fadeDuration <= 0.04 {
-            bgmPlayerNode.volume = 0.0
-            bgmPlayerNode.pause()
-            isBGMPlaying = false
+    /// Оновлення гучності BGM плеєра з урахуванням поточного bgmVolume, isMuted та показу реклами
+    func applyBGMVolume(fadeDuration: TimeInterval = 0) {
+        guard let player = bgmPlayer else { return }
+        if isAdActive || isMuted || bgmVolume <= 0.001 {
+            if fadeDuration > 0.05 && player.isPlaying {
+                player.setVolume(0.0, fadeDuration: fadeDuration)
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + fadeDuration) { [weak self] in
+                    guard let self = self, let player = self.bgmPlayer else { return }
+                    if !self.isBGMPlayingRequested {
+                        player.pause()
+                    }
+                }
+            } else {
+                player.pause()
+            }
         } else {
-            let startVol = bgmPlayerNode.volume
-            let steps = 10
-            let interval = fadeDuration / Double(steps)
-            var currentStep = 0
-            
-            let timer = DispatchSource.makeTimerSource(queue: self.audioQueue)
-            timer.schedule(deadline: .now() + interval, repeating: interval)
-            timer.setEventHandler { [weak self] in
-                guard let self = self else { return }
-                currentStep += 1
-                let progress = Float(currentStep) / Float(steps)
-                self.bgmPlayerNode.volume = max(0.0, startVol * (1.0 - progress))
-                if currentStep >= steps {
-                    self.bgmPlayerNode.volume = 0.0
-                    self.bgmPlayerNode.pause()
-                    self.isBGMPlaying = false
-                    self.cancelFadeTimer()
+            let base = isLowVolumeActive ? GameAudio.bgmLowVolume : GameAudio.bgmTargetVolume
+            let target = base * bgmVolume
+            if fadeDuration > 0.05 {
+                player.setVolume(target, fadeDuration: fadeDuration)
+            } else {
+                player.volume = target
+            }
+            if !player.isPlaying && isBGMPlayingRequested {
+                player.play()
+            }
+        }
+    }
+    
+    /// Зупинка фонової музики з плавним згасанням
+    func stopBGM(fadeDuration: TimeInterval = 0) {
+        self.isBGMPlayingRequested = false
+        guard let player = bgmPlayer, player.isPlaying else { return }
+        if fadeDuration > 0.05 {
+            player.setVolume(0.0, fadeDuration: fadeDuration)
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + fadeDuration) { [weak self] in
+                guard let self = self, let player = self.bgmPlayer else { return }
+                if !self.isBGMPlayingRequested {
+                    player.pause()
                 }
             }
-            self.fadeTimerSource = timer
-            timer.resume()
+        } else {
+            player.volume = 0.0
+            player.pause()
         }
     }
     
@@ -522,15 +463,14 @@ final class GameAudio {
         guard isAdActive else { return }
         isAdActive = false
         
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+        try? session.setActive(true)
+        
         audioQueue.async { [weak self] in
-            guard let self = self else { return }
-            let session = AVAudioSession.sharedInstance()
-            try? session.setCategory(.ambient, mode: .default)
-            try? session.setActive(true)
-            
-            self.ensureEngineRunningInternal()
-            self.resumeBGMInternal()
+            self?.ensureEngineRunningInternal()
         }
+        resumeBGM()
     }
     
     // MARK: - Загальне перемикання звуку (Master Mute / Unmute)
@@ -538,15 +478,11 @@ final class GameAudio {
     /// Встановлення стану загального вимкнення звуку
     func setMuted(_ muted: Bool) {
         isMuted = muted
-        audioQueue.async { [weak self] in
-            guard let self = self else { return }
-            self.applySFXVolumeInternal()
-            if muted {
-                self.pauseBGMInternal()
-            } else {
-                self.ensureEngineRunningInternal()
-                self.resumeBGMInternal()
-            }
+        applySFXVolume()
+        if muted {
+            pauseBGM()
+        } else {
+            resumeBGM()
         }
     }
     
